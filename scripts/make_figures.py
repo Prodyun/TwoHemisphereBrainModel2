@@ -244,14 +244,15 @@ def main() -> None:
     parser.add_argument("--batch", default=None)
     parser.add_argument("--fit", default=None)
     parser.add_argument("--config", default="configs/hcp.yaml")
+    parser.add_argument("--out", default=None, help="output folder (default: results/figures_<time>)")
     args = parser.parse_args()
     batch = Path(args.batch) if args.batch else newest("batch_*")
     if batch is None:
         raise SystemExit("No batch results. Run: python scripts/run_batch.py")
     rows = load_rows(batch / "results.csv")
     cfg = load_config(args.config)
-    out = Path("results") / datetime.now().strftime("figures_%Y%m%d_%H%M%S")
-    out.mkdir(parents=True)
+    out = Path(args.out) if args.out else Path("results") / datetime.now().strftime("figures_%Y%m%d_%H%M%S")
+    out.mkdir(parents=True, exist_ok=True)
 
     fig_benefit_by_experiment(rows, out / "1_callosum_benefit_by_experiment.png")
     fig_functions(rows, out / "2_functions_rescued.png")

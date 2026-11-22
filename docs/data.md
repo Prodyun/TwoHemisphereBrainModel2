@@ -43,10 +43,16 @@ This picks 2 subjects with complete 3T scans and no quality-control issue (fixed
 their IDs to `data/raw/pilot_subjects.txt`. In code, docs and results they are only called
 "subject A" and "subject B".
 
-For each subject, download from ConnectomeDB (HCP Young Adult, package "Resting State fMRI
-FIX-Denoised (Compact)"):
-- `rfMRI_REST1_LR_Atlas_MSMAll_hp2000_clean.dtseries.nii`
-- `rfMRI_REST1_RL_Atlas_MSMAll_hp2000_clean.dtseries.nii`
+For each subject, download the **HCP-Young Adult 2025** resting-state package from ConnectomeDB on
+BALSA (balsa.wustl.edu > ConnectomeDB tab; the old db.humanconnectome.org closed on 2025-10-01).
+The package used here is `<subject>_Rest3TRecommended.zip` (about 10.8 GB per subject). Only its 4
+per-run surface files are needed (418 MB each):
+- `rfMRI_REST1_LR_Atlas_MSMAll_hp2000_clean_rclean_tclean.dtseries.nii` (also `REST1_RL`, `REST2_LR`, `REST2_RL`)
+
+Do **not** also extract the concatenated `rfMRI_REST_Atlas_..._dtseries.nii`: it holds the same 4 runs
+joined together, and `process_fmri.py` reads every `.dtseries.nii` in the folder, so it would be counted twice.
+Never attach these files (or the subject CSV) to a Claude chat: they are far too large for a prompt.
+Leave them on disk and give the path.
 
 Put them in `data/raw/hcp/<subject id>/`, then:
 ```powershell

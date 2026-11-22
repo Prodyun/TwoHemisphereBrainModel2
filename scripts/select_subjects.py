@@ -12,7 +12,7 @@ import csv
 import random
 from pathlib import Path
 
-RUNS = ["rfMRI_REST1_LR", "rfMRI_REST1_RL"]
+RUNS = ["rfMRI_REST1_LR", "rfMRI_REST1_RL", "rfMRI_REST2_LR", "rfMRI_REST2_RL"]
 
 
 def eligible(row: dict) -> bool:
@@ -47,11 +47,11 @@ def main() -> None:
     print(f"{len(rows)} subjects qualify. Chosen ({args.out}):")
     for label, r in zip("ABCDEFGHIJ", chosen):
         print(f"  subject {label}: {r['Subject']}  ({r['Gender']}, age {r['Age']})")
-    print("\nDownload for each subject (ConnectomeDB > HCP Young Adult > package"
-          " 'Resting State fMRI FIX-Denoised (Compact)'), then put the files in"
-          " data/raw/hcp/<subject>/:")
+    print("\nDownload for each subject (balsa.wustl.edu > ConnectomeDB > HCP-Young Adult 2025,"
+          " resting-state package <subject>_Rest3TRecommended.zip), then extract only these files into"
+          " data/raw/hcp/<subject>/ (not the joined rfMRI_REST_... file):")
     for run in RUNS:
-        print(f"  {run}_Atlas_MSMAll_hp2000_clean.dtseries.nii")
+        print(f"  {run}_Atlas_MSMAll_hp2000_clean_rclean_tclean.dtseries.nii")
 
 
 if __name__ == "__main__":

@@ -43,6 +43,9 @@ def main() -> None:
     parser.add_argument("--steps", type=int, default=12000,
                         help="longer runs give more reliable connectivity estimates")
     parser.add_argument("--quick", action="store_true", help="fewer settings (for a fast check)")
+    parser.add_argument("--out", default=None, help="output folder (default: results/fit_<time>)")
+    parser.add_argument("--apply", action="store_true",
+                        help="write the fitted settings into the config file (a .bak copy is kept)")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -111,7 +114,7 @@ def main() -> None:
         best_fc[t] = rest_fc(W_l, W_r, C_l, C_r, p, noise)[0]
         seg[t] = {"real": segregation(emp), "model": segregation(best_fc[t])}
 
-    out_dir = Path("results") / datetime.now().strftime("fit_%Y%m%d_%H%M%S")
+    out_dir = Path(args.out) if args.out else Path("results") / datetime.now().strftime("fit_%Y%m%d_%H%M%S")
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "fit.json").write_text(json.dumps(
         {"wiring": wiring, "steps": args.steps, "models": results, "held_out": held_out,
@@ -128,7 +131,31 @@ def main() -> None:
     print(f"  left_hemisphere.dynamics:  {{leak: {g['leak_l']:.3f}, gain: {g['gain_l']:.3f}, noise: {g['noise_l']:.3f}}}")
     print(f"  right_hemisphere.dynamics: {{leak: {g['leak_r']:.3f}, gain: {g['gain_r']:.3f}, noise: {g['noise_r']:.3f}}}")
     print(f"  corpus_callosum.strength:  {g['strength']:.3f}")
+    if args.apply:
+        apply_settings(Path(args.config), g, out_dir)
+        print(f"Wrote these settings into {args.config} (old version kept as {args.config}.bak)")
     print(f"\nSaved {out_dir}")
+
+
+def apply_settings(config: Path, g: dict, fit_dir: Path) -> None:
+    """Replace the fitted numbers in the YAML text in place, so its comments are kept."""
+    import re
+    import shutil
+
+    text = config.read_text(encoding="utf-8")
+    shutil.copyfile(config, config.with_name(config.name + ".bak"))
+    for side, s in (("left_hemisphere", "l"), ("right_hemisphere", "r")):
+        new = f"dynamics: {{leak: {g['leak_' + s]:.3f}, gain: {g['gain_' + s]:.3f}, noise: {g['noise_' + s]:.3f}}}"
+        text, n = re.subn(rf"(^{side}:\n(?:[ \t].*\n)*?[ \t]+)dynamics: \{{[^}}]*\}}", rf"\g<1>{new}",
+                          text, count=1, flags=re.M)
+        if n != 1:
+            raise SystemExit(f"could not find {side}.dynamics in {config}")
+    text, n = re.subn(r"(^corpus_callosum:\n(?:[ \t].*\n)*?[ \t]+strength:[ \t]*)[0-9.]+",
+                      rf"\g<1>{g['strength']:.3f}", text, count=1, flags=re.M)
+    if n != 1:
+        raise SystemExit(f"could not find corpus_callosum.strength in {config}")
+    text = re.sub(r"scripts/fit_to_fmri.py \(results/[^)]*\)", f"scripts/fit_to_fmri.py ({fit_dir.as_posix()})", text)
+    config.write_text(text, encoding="utf-8")
 
 
 def make_figures(out_dir, results, wiring_alone, targets, best_fc, main_name) -> None:

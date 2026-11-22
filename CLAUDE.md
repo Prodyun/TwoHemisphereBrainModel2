@@ -27,6 +27,15 @@ Two-hemisphere (left/right) brain model, simulated with AI, in Python.
 - Interview the owner with questions before planning bigger work; don't assume.
 - Working style: build the whole agreed chunk, then explain it in plain language at the end.
 
+## Data files and the chat
+- Never ask the owner to attach data files (CSV, .nii, .zip) to the chat: they cause "prompt is too
+  long". Files stay on disk; the owner gives the path or says "downloaded", and Claude moves them with
+  shell commands and inspects them only through small Python summaries (sizes, shapes, row counts).
+  `.claude/settings.json` blocks the Read tool on `data/raw`, `data/processed` and scan/zip files.
+- Long runs go through `scripts/run_pipeline.py`, started as a Windows scheduled task by
+  `scripts/start_pipeline_task.ps1`, so they don't depend on Claude, VS Code or internet, and resume
+  after a shutdown. Progress: `results/pipeline/status.txt`.
+
 ## Project facts (decided 2026-11-21)
 - Timeline: finish within 2-3 days of 2026-11-21. Laptop, no GPU.
 - Real data: HCP group data from the ENIGMA Toolbox (`scripts/fetch_enigma_data.py`), plus

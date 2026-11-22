@@ -19,6 +19,7 @@ Experiments (each run always compares the connected brain with the split brain, 
 import argparse
 import copy
 import csv
+import json
 import os
 from datetime import datetime
 from multiprocessing import Pool
@@ -96,12 +97,34 @@ def run_one(job: tuple[str, str, str, dict]) -> dict:
     return row
 
 
+def job_key(job) -> tuple[str, str, str, int]:
+    """What identifies one run: a job tuple (experiment, condition, area, cfg) or a saved row."""
+    if isinstance(job, dict):
+        return job["experiment"], job["condition"], str(job["start_area"]), int(job["seed"])
+    experiment, condition, area, cfg = job
+    return experiment, condition, str(area), int(cfg["seed"])
+
+
+def load_partial(path: Path) -> list[dict]:
+    """Rows saved by an earlier, interrupted run. A half-written last line (power cut) is ignored."""
+    rows = []
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+    return rows
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="configs/hcp.yaml")
     parser.add_argument("--seeds", type=int, default=20)
     parser.add_argument("--areas", type=int, default=20)
     parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 2))
+    parser.add_argument("--out", default=None,
+                        help="output folder; if it already has results_partial.csv, finished runs are skipped")
     args = parser.parse_args()
 
     base = load_config(args.config)
@@ -111,17 +134,27 @@ def main() -> None:
     areas = [names[i][2:] for i in chosen]
     print("Start areas:", ", ".join(areas))
     todo = jobs(base, areas, list(range(1, args.seeds + 1)))
-    print(f"{len(todo)} experiments on {args.workers} cores ...")
 
-    rows = []
-    with Pool(args.workers) as pool:
-        for i, row in enumerate(pool.imap_unordered(run_one, todo, chunksize=4), 1):
-            rows.append(row)
-            if i % 100 == 0 or i == len(todo):
-                print(f"  {i}/{len(todo)}")
-
-    out_dir = Path("results") / datetime.now().strftime("batch_%Y%m%d_%H%M%S")
+    out_dir = Path(args.out) if args.out else Path("results") / datetime.now().strftime("batch_%Y%m%d_%H%M%S")
     out_dir.mkdir(parents=True, exist_ok=True)
+    partial = out_dir / "results_partial.jsonl"
+    rows = load_partial(partial)
+    done = {job_key(r) for r in rows}
+    remaining = [j for j in todo if job_key(j) not in done]
+    if done:
+        print(f"Resuming: skipping {len(todo) - len(remaining)} finished runs")
+    print(f"{len(remaining)} experiments on {args.workers} cores ...")
+
+    if remaining:
+        with Pool(args.workers) as pool, open(partial, "a", encoding="utf-8") as log:
+            for i, row in enumerate(pool.imap_unordered(run_one, remaining, chunksize=1), 1):
+                rows.append(row)
+                log.write(json.dumps(row) + "\n")  # saved at once, so a shutdown loses nothing
+                log.flush()
+                os.fsync(log.fileno())
+                if i % 50 == 0 or i == len(remaining):
+                    print(f"  {i}/{len(remaining)}", flush=True)
+
     fields = sorted({k for r in rows for k in r}, key=lambda k: (":" in k, k))
     first = ["experiment", "condition", "start_area", "seed"]
     fields = first + [f for f in fields if f not in first]

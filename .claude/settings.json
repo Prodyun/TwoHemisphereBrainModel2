@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./data/raw/**)",
+      "Read(./data/processed/**)",
+      "Read(**/*.nii)",
+      "Read(**/*.nii.gz)",
+      "Read(**/*.npz)",
+      "Read(**/*.zip)"
+    ]
+  }
+}
