@@ -1,0 +1,18 @@
+# Default simulation settings. To try a variation, copy this file
+# (e.g. configs/split_brain.yaml) and run it with --config.
+seed: 42
+steps: 100
+
+input_size: 8        # size of the sensory input vector
+hidden_size: 16      # neurons per hemisphere
+
+left_hemisphere:
+  specialization: "language_logic"    # sequential / analytical processing
+  learning_rate: 0.01
+
+right_hemisphere:
+  specialization: "spatial_holistic"  # pattern / spatial processing
+  learning_rate: 0.01
+
+corpus_callosum:
+  strength: 0.5      # 0 = fully disconnected ("split brain"), 1 = fully merged
