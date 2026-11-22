@@ -52,3 +52,18 @@ def test_apply_settings_rewrites_only_the_fitted_numbers(tmp_path):
     assert after["left_hemisphere"]["functions"] == before["left_hemisphere"]["functions"]
     assert (tmp_path / "hcp.yaml.bak").exists()
     assert "# REAL-BRAIN experiment" in cfg_file.read_text(encoding="utf-8")
+
+
+def test_support_map_covers_every_area_on_both_sides():
+    sm = _script("support_map")
+    base = load_config(ROOT / "configs" / "hcp.yaml")
+    names = {"left": [f"L_A{i}" for i in range(180)], "right": [f"R_A{i}" for i in range(180)]}
+    todo = sm.jobs(base, names, [1, 2])
+    assert len(todo) == 360 * 2
+    sides = {cfg["lesion"]["hemisphere"] for *_, cfg in todo}
+    assert sides == {"left", "right"}
+    assert all(cfg["lesion"]["region"][0] == cfg["lesion"]["hemisphere"][0].upper() for *_, cfg in todo)
+    rows = [{"damaged_hemisphere": c["lesion"]["hemisphere"], "start_area": a, "benefit": 0.1 * s,
+             "benefit:vision": 0.0} for _, _, a, c in todo for s in [c["seed"]]]
+    starts = sm.per_start(rows)
+    assert len(starts) == 360 and abs(starts[0]["benefit"] - 0.15) < 1e-9  # seeds averaged

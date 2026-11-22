@@ -277,3 +277,59 @@ def test_viewer_shows_areas_wiring_and_callosal_fibres(fake_file, tmp_path):
     assert len(con["r2l"][0]) == len(data["callosal_links"])
     assert max(map(max, con["r2l"])) > 0                       # signals cross when connected
     assert max(map(max, data["conditions"]["split"]["r2l"])) == 0  # and not when cut
+
+
+def _explore_module():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("explore", Path(__file__).resolve().parents[1] / "scripts" / "explore.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_explore_runs_a_chosen_start_on_either_side(fake_file):
+    explore = _explore_module()
+    cfg = fake_config(fake_file)
+    status, body = explore.handle_run(cfg, {"hemisphere": "right", "region": "R_44", "type": "spreading"})
+    assert status == 200
+    assert body["meta"]["damaged"] == "right"
+    assert body["meta"]["lesion_center"] == 1               # R_44 is area 1 in the fake brain
+    con = body["conditions"]["connected"]
+    assert max(map(max, con["right_damage"])) > 0 and max(map(max, con["left_damage"])) == 0
+    status, body = explore.handle_run(cfg, {"hemisphere": "left", "region": "45", "type": "stroke"})
+    assert status == 200 and body["meta"]["damaged"] == "left" and body["meta"]["lesion_type"] == "stroke"
+
+
+def test_explore_rejects_bad_requests(fake_file):
+    explore = _explore_module()
+    cfg = fake_config(fake_file)
+    assert explore.handle_run(cfg, {"hemisphere": "right", "region": "NOPE"})[0] == 400
+    assert explore.handle_run(cfg, {"hemisphere": "middle", "region": "44"})[0] == 400
+    assert explore.handle_run(cfg, {"hemisphere": "left", "region": "44", "type": "flu"})[0] == 400
+
+
+def test_help_is_symmetric_on_a_mirror_image_brain(fake_file, tmp_path):
+    """On a brain whose right half is an exact mirror of the left (same wiring, settings and jobs,
+    no noise), a disorder starting at L_44 and one starting at R_44 must get exactly the same help.
+    This catches any left/right asymmetry hidden in the code."""
+    z = dict(np.load(fake_file))
+    for key in ("verts", "faces", "vertex_region", "centers", "anchors"):
+        z[f"right_{key}"] = z[f"left_{key}"].copy()
+    for key in ("verts", "centers", "anchors"):
+        z[f"right_{key}"][:, 0] *= -1
+    z["sc_right"] = z["sc_left"].copy()
+    z["sc_left_right"] = (z["sc_left_right"] + z["sc_left_right"].T) / 2
+    mirror = tmp_path / "mirror_brain.npz"
+    np.savez(mirror, **z)
+    jobs = {"language": {"areas": ["44", "45"], "pattern": "sequence"},
+            "vision": {"areas": ["V1"], "pattern": "sine", "params": {"period": 40}}}
+    help_ = {}
+    for side in ("left", "right"):
+        cfg = fake_config(mirror, lesion={"hemisphere": side, "region": "44"})
+        for h in ("left_hemisphere", "right_hemisphere"):
+            cfg[h]["functions"] = copy.deepcopy(jobs)
+            cfg[h]["dynamics"] = {"leak": 0.3, "gain": 0.8, "noise": 0.0}
+        cfg["corpus_callosum"]["wiring"] = "real"
+        help_[side] = summarize(run_experiment(cfg), cfg)["benefit_of_callosum"]
+    assert help_["left"] != 0
+    assert help_["left"] == pytest.approx(help_["right"], abs=1e-9)

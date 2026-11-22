@@ -8,6 +8,7 @@ Steps (each is skipped once it has finished, so a shutdown or crash loses no fin
   2. fit            fit left/right/callosum settings to real fMRI, write them into configs/hcp.yaml
   3. batch          all experiments; every finished run is saved at once, so it resumes mid-way
   4. figures        poster figures and summary.md
+  5. support_map    every one of the 360 start areas: how much the healthy side helps
 
 Progress: results/pipeline/status.txt (one line) and results/pipeline/log.txt (everything).
 Needs no internet. While it runs, it asks Windows not to go to sleep on its own.
@@ -30,6 +31,7 @@ PIPE = ROOT / "results" / "pipeline"
 FIT_DIR = ROOT / "results" / "fit_main"
 BATCH_DIR = ROOT / "results" / "batch_main"
 FIG_DIR = ROOT / "results" / "figures_main"
+SUPPORT_DIR = ROOT / "results" / "support_map"
 
 STEPS = [  # (name, command arguments, the file that proves the step is finished)
     ("process_fmri", ["scripts/process_fmri.py"], ROOT / "data" / "processed" / "subject_fc.npz"),
@@ -37,6 +39,7 @@ STEPS = [  # (name, command arguments, the file that proves the step is finished
     ("batch", ["scripts/run_batch.py", "--out", str(BATCH_DIR)], BATCH_DIR / "results.csv"),
     ("figures", ["scripts/make_figures.py", "--batch", str(BATCH_DIR), "--fit", str(FIT_DIR),
                  "--out", str(FIG_DIR)], FIG_DIR / "summary.md"),
+    ("support_map", ["scripts/support_map.py", "--out", str(SUPPORT_DIR)], SUPPORT_DIR / "support_summary.md"),
 ]
 
 
@@ -66,7 +69,7 @@ def main() -> None:
     PIPE.mkdir(parents=True, exist_ok=True)
     done_flag = PIPE / "DONE"
     if args.redo:
-        for p in (FIT_DIR, BATCH_DIR, FIG_DIR):
+        for p in (FIT_DIR, BATCH_DIR, FIG_DIR, SUPPORT_DIR):
             shutil.rmtree(p, ignore_errors=True)
         done_flag.unlink(missing_ok=True)
         for m in PIPE.glob("step_*.done"):

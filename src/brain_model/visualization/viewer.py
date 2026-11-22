@@ -151,7 +151,9 @@ def _callosal_signals(run: dict, CL: np.ndarray, CR: np.ndarray, links: list, st
     return out
 
 
-def build_viewer(config: dict, results: dict, summary: dict, path: str | Path) -> Path:
+def run_payload(config: dict, results: dict, summary: dict) -> dict:
+    """Everything that changes from one run to the next (not the meshes): the time series of both
+    conditions, which side is damaged, where it started, and the scales for the colours."""
     stride = config.get("frame_stride", 4)
     window = config["analysis"]["window"]
     n = config["n_regions"]
@@ -174,7 +176,7 @@ def build_viewer(config: dict, results: dict, summary: dict, path: str | Path) -
     into_all = np.abs(np.concatenate([np.ravel(con["into_left"]), np.ravel(con["into_right"])]))
     out_all = np.concatenate([np.ravel(con["out_left"]), np.ravel(con["out_right"])])
     flux_all = np.concatenate([np.ravel(con["r2l"]), np.ravel(con["l2r"])]) if cc_links else np.ones(1)
-    payload = {
+    return {
         "meta": {
             "steps": config["steps"], "stride": stride, "window": window, "scale": SCALE,
             "n_frames": len(range(0, config["steps"], stride)),
@@ -189,15 +191,28 @@ def build_viewer(config: dict, results: dict, summary: dict, path: str | Path) -
             "max_out": float(max(np.percentile(out_all, 98), 1)),
             "max_flux": float(max(np.percentile(flux_all, 98), 1)),
         },
-        "specialization": {s: config[f"{s}_hemisphere"]["specialization"] for s in SIDES},
-        "mesh": {s: _mesh_payload(config, s) for s in SIDES},
         "functions": {s: _function_payload(first, s, n) for s in SIDES},
         "callosal_links": cc_links,
         "conditions": conditions,
         "summary": summary,
     }
-    html = TEMPLATE.read_text(encoding="utf-8").replace(
+
+
+def viewer_payload(config: dict, results: dict, summary: dict, interactive: bool = False) -> dict:
+    """Run data + the 3D meshes. `interactive` = served by scripts/explore.py, so areas can be picked."""
+    payload = run_payload(config, results, summary)
+    payload["meta"]["interactive"] = interactive
+    payload["specialization"] = {s: config[f"{s}_hemisphere"]["specialization"] for s in SIDES}
+    payload["mesh"] = {s: _mesh_payload(config, s) for s in SIDES}
+    return payload
+
+
+def viewer_html(payload: dict) -> str:
+    return TEMPLATE.read_text(encoding="utf-8").replace(
         "__BRAIN_DATA__", json.dumps(payload, separators=(",", ":")))
+
+
+def build_viewer(config: dict, results: dict, summary: dict, path: str | Path) -> Path:
     path = Path(path)
-    path.write_text(html, encoding="utf-8")
+    path.write_text(viewer_html(viewer_payload(config, results, summary)), encoding="utf-8")
     return path

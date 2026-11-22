@@ -66,6 +66,22 @@ callosum, overall and for each job. It then opens `results/<timestamp>/viewer.ht
 - add `#frame=150&paused&view=together&color=input&network` to the end of the address to open at a
   specific moment and setting (useful for screenshots)
 
+## Choose where the disorder starts (any of the 360 areas)
+
+```powershell
+python scripts/explore.py        # or double-click explore.bat
+```
+
+This opens the viewer through a small helper program that runs on your laptop only. Click any area
+on either hemisphere (left or right), choose **Spreading** or **Stroke**, and press **Start disorder
+here**. About 3 seconds later the new run plays: the chosen hemisphere is damaged, and the other one
+helps through the corpus callosum (compare with **Split brain**). Keep the helper's window open while
+you use the viewer; press Ctrl+C there to stop. Adding `#pick=right:R_FFC&run` to the address picks
+and starts an area without clicking.
+
+`python scripts/support_map.py` runs every one of the 360 start areas and maps how much the healthy
+hemisphere helps for each (`results/support_map/`); it is also step 5 of the full pipeline.
+
 ## Full pipeline (for the results and poster)
 
 ```powershell

@@ -61,6 +61,10 @@
   .chart { position: relative; height: 150px; min-width: 0; }
   .chart canvas { width: 100%; height: 100%; display: block; }
   .hint { color: var(--muted); font-size: 12px; }
+  .pick { min-height: 30px; }
+  #pick-text b { color: #fff; }
+  #pick-run { background: #3a1016; border-color: #8a2a35; }
+  #pick-run:hover { border-color: #e0303f; }
   #tip { position: fixed; pointer-events: none; z-index: 5; background: rgba(8, 11, 16, 0.94);
     border: 1px solid #2a3240; border-radius: 6px; padding: 6px 9px; font-size: 12px; line-height: 1.45;
     max-width: 260px; }
@@ -136,6 +140,17 @@
       <label class="chk"><input type="checkbox" id="show-network"> Network view (180 areas + wiring)</label>
       <label class="chk"><input type="checkbox" id="show-functions"> Show functions</label>
     </div>
+    <div class="row pick" id="pick">
+      <span id="pick-text" class="hint"></span>
+      <span id="pick-controls" hidden>
+        <span class="seg" role="group" aria-label="Kind of disorder">
+          <button data-kind="spreading" aria-pressed="true">Spreading</button>
+          <button data-kind="stroke" aria-pressed="false">Stroke</button>
+        </span>
+        <button id="pick-run">Start disorder here</button>
+      </span>
+      <span id="pick-status" class="hint"></span>
+    </div>
     <div class="legend" id="func-legend" hidden></div>
     <div class="legend" id="legend"></div>
   </div>
@@ -155,11 +170,13 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const D = JSON.parse(document.getElementById('brain-data').textContent);
-const M = D.meta, N = M.n_frames, SC = M.scale;
-const damaged = M.damaged, healthySide = damaged === 'left' ? 'right' : 'left';
+let M = D.meta;
+const N = M.n_frames, SC = M.scale;
+let damaged = M.damaged, healthySide = damaged === 'left' ? 'right' : 'left';
 const SIDES = ['left', 'right'];
 const FRIENDLY = { '44': "Broca's area", '45': "Broca's area", '55b': 'speech area 55b', 'V1': 'primary visual',
   '4': 'primary motor', 'FFC': 'fusiform face complex', 'FEF': 'frontal eye field', 'MT': 'motion area MT' };
+const PICK = { sel: null, type: 'spreading', busy: false };   // the area chosen as the next start
 const state = { cond: 'connected', frame: 0, playing: true, speed: 1, colorBy: 'damage', outlines: true,
   network: false, showFunctions: false, view: 'separate', acc: 0 };
 
@@ -172,22 +189,29 @@ const nice = (side, r) => { const a = areaName(side, r); return FRIENDLY[a] ? `$
 
 document.getElementById('spec-left').textContent = D.specialization.left;
 document.getElementById('spec-right').textContent = D.specialization.right;
-document.getElementById('subtitle').textContent = M.lesion_type === 'stroke'
-  ? `A stroke hits ${nice(damaged, M.lesion_center)} (${damaged} hemisphere) at step ${M.start_step}`
-  : `A disorder starts in ${nice(damaged, M.lesion_center)} (${damaged} hemisphere) at step ${M.start_step} and spreads along the wiring`;
-document.getElementById('tog-cap').textContent =
-  `${D.callosal_links.length} strongest callosal fibres (${M.wiring} wiring) · gold = signals into the ${damaged} side`;
+function setCaptions() {
+  document.getElementById('subtitle').textContent = M.lesion_type === 'stroke'
+    ? `A stroke hits ${nice(damaged, M.lesion_center)} (${damaged} hemisphere) at step ${M.start_step}; the ${healthySide} side can help`
+    : `A disorder starts in ${nice(damaged, M.lesion_center)} (${damaged} hemisphere) at step ${M.start_step} and spreads; the ${healthySide} side can help`;
+  document.getElementById('tog-cap').textContent =
+    `${D.callosal_links.length} strongest callosal fibres (${M.wiring} wiring) · gold = signals into the ${damaged} side`;
+}
+setCaptions();
 
 // when the disease first reaches each area (damage above 10%), per condition and side, for the arrival flash
-const ARRIVAL = {};
-for (const [cname, c] of Object.entries(D.conditions)) {
-  ARRIVAL[cname] = {};
-  for (const side of SIDES) {
-    const a = new Array(c[side + '_damage'][0].length).fill(Infinity);
-    c[side + '_damage'].forEach((row, f) => row.forEach((d, r) => { if (d > 0.1 * SC && a[r] === Infinity) a[r] = f; }));
-    ARRIVAL[cname][side] = a;
+let ARRIVAL = {};
+function computeArrival() {
+  ARRIVAL = {};
+  for (const [cname, c] of Object.entries(D.conditions)) {
+    ARRIVAL[cname] = {};
+    for (const side of SIDES) {
+      const a = new Array(c[side + '_damage'][0].length).fill(Infinity);
+      c[side + '_damage'].forEach((row, f) => row.forEach((d, r) => { if (d > 0.1 * SC && a[r] === Infinity) a[r] = f; }));
+      ARRIVAL[cname][side] = a;
+    }
   }
 }
+computeArrival();
 
 // ---------- colours ----------
 const FUNC_COLORS = [[0.95, 0.55, 0.20], [0.55, 0.85, 0.35], [0.75, 0.45, 0.95], [0.35, 0.70, 0.95],
@@ -300,22 +324,31 @@ function makeHemi(side, together) {
     vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
   group.add(links);
 
-  let marker = null;
-  if (side === damaged && M.lesion_center >= 0) {
-    marker = new THREE.Group();
-    const c = centers[M.lesion_center];
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.03, 16, 12), new THREE.MeshBasicMaterial({ color: 0xff4455 }));
-    ball.position.copy(c);
-    const label = textSprite(`start: ${nice(side, M.lesion_center)}`);
-    label.position.copy(c.clone().add(c.clone().normalize().multiplyScalar(0.12)));
-    marker.add(ball, label);
-    group.add(marker);
-  }
+  // start marker (every hemisphere has one; only the damaged side's is shown) and selection marker
+  const marker = new THREE.Group();
+  marker.add(new THREE.Mesh(new THREE.SphereGeometry(0.03, 16, 12), new THREE.MeshBasicMaterial({ color: 0xff4455 })));
+  group.add(marker);
+  const selMarker = new THREE.Mesh(new THREE.SphereGeometry(0.026, 16, 12),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthTest: false }));
+  selMarker.renderOrder = 9; selMarker.visible = false;
+  group.add(selMarker);
   const borderSet = m.border ? new Uint8Array(m.vr.length / m.k) : null;
   if (borderSet) for (const v of m.border) borderSet[v] = 1;
-  const h = { side, m, group, geo, colors, surface, nodes, centers, links, linkColors, SEG, marker, borderSet };
+  const h = { side, m, group, geo, colors, surface, nodes, centers, links, linkColors, SEG, marker, selMarker, borderSet };
+  placeMarker(h);
   HEMIS.push(h);
   return h;
+}
+function placeMarker(h) {
+  const { marker, centers, side } = h;
+  for (const child of [...marker.children].slice(1)) { marker.remove(child); child.material.map?.dispose(); child.material.dispose(); }
+  if (side !== damaged || M.lesion_center < 0) { marker.userData.active = false; return; }
+  const c = centers[M.lesion_center];
+  marker.children[0].position.copy(c);
+  const label = textSprite(`start: ${nice(side, M.lesion_center)}`);
+  label.position.copy(c.clone().add(c.clone().normalize().multiplyScalar(0.12)));
+  marker.add(label);
+  marker.userData.active = true;
 }
 
 const _mat = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _col = new THREE.Color();
@@ -363,7 +396,9 @@ function paintHemi(h, f, rgb, dmg) {
   }
   h.links.geometry.attributes.color.needsUpdate = true;
   h.links.visible = any;
-  if (h.marker) h.marker.visible = f * M.stride >= M.start_step;
+  h.marker.visible = h.marker.userData.active && f * M.stride >= M.start_step;
+  h.selMarker.visible = !!PICK.sel && PICK.sel.side === h.side;
+  if (h.selMarker.visible) h.selMarker.position.copy(h.centers[PICK.sel.region]);
 }
 
 // ---------- Separate view: one renderer + camera per hemisphere ----------
@@ -440,7 +475,7 @@ const dot = (() => {   // round, soft-edged pulse instead of a square
 const pulsePoints = new THREE.Points(pulseGeo, new THREE.PointsMaterial({
   size: 0.07, map: dot, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
 togScene.add(pulsePoints);
-const towardDamaged = damaged === 'left' ? 'r2l' : 'l2r';
+let towardDamaged = damaged === 'left' ? 'r2l' : 'l2r';
 const GOLD = [1.0, 0.75, 0.23], CYAN = [0.22, 0.88, 1.0];
 
 function paintCallosum(f) {
@@ -476,30 +511,94 @@ document.querySelectorAll('button.reset').forEach(b => b.onclick = () => VIEWS[b
 // ---------- hover: which area is under the pointer ----------
 const tip = document.getElementById('tip'), ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
 const pct = x => (x == null ? '–' : Math.round(x * 100) + '%');
-for (const [vname, view] of Object.entries(VIEWS)) {
+function areaAt(view, e) {           // {side, region} under the pointer (region -1 = medial wall), or null
+  const cv = view.renderer.domElement, r = cv.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, view.camera);
+  const hits = ray.intersectObjects(view.hemis.map(h => h.surface), false);
+  if (!hits.length) return null;
+  const hemi = view.hemis.find(h => h.surface === hits[0].object), m = hemi.m;
+  return { side: hemi.side, region: m.vr[m.k * hits[0].face.a] };
+}
+for (const view of Object.values(VIEWS)) {
   const cv = view.renderer.domElement;
   cv.addEventListener('pointermove', e => {
-    const r = cv.getBoundingClientRect();
-    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
-    ray.setFromCamera(ndc, view.camera);
-    const hits = ray.intersectObjects(view.hemis.map(h => h.surface), false);
-    if (!hits.length) { tip.hidden = true; return; }
-    const hemi = view.hemis.find(h => h.surface === hits[0].object), m = hemi.m;
-    const v = hits[0].face.a, reg = m.vr[m.k * v];
-    const c = D.conditions[state.cond], f = state.frame, side = hemi.side;
+    const hit = areaAt(view, e);
+    if (!hit) { tip.hidden = true; return; }
+    const c = D.conditions[state.cond], f = state.frame, { side, region: reg } = hit;
     if (reg < 0) { tip.innerHTML = '<b>Medial wall</b><br><span class="m">where the hemispheres join; no cortical area</span>'; }
     else {
       const fi = D.functions[side].region[reg];
       const job = fi >= 0 ? D.functions[side].names[fi].replace(/_/g, ' ') : 'no assigned job';
       tip.innerHTML = `<b>${nice(side, reg)}</b> <span class="m">${side} hemisphere · ${job}</span><br>` +
         `damage ${pct(c[side + '_damage'][f][reg] / SC)} · activity ${(c[side][f][reg] / SC).toFixed(2)}<br>` +
-        `input from other side ${(c['into_' + side][f][reg] / SC).toFixed(3)} · sending ${(c['out_' + side][f][reg] / SC).toFixed(3)}`;
+        `input from other side ${(c['into_' + side][f][reg] / SC).toFixed(3)} · sending ${(c['out_' + side][f][reg] / SC).toFixed(3)}` +
+        (M.interactive ? '<br><span class="m">click to choose as the start</span>' : '');
     }
     tip.hidden = false;
     tip.style.left = Math.min(innerWidth - 270, e.clientX + 14) + 'px';
     tip.style.top = (e.clientY + 14) + 'px';
   });
   cv.addEventListener('pointerleave', () => tip.hidden = true);
+  // a click (press and release without dragging) chooses an area as the next start
+  let down = null;
+  cv.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; });
+  cv.addEventListener('pointerup', e => {
+    if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return;
+    down = null;
+    const hit = areaAt(view, e);
+    if (!hit) return;
+    if (hit.region < 0) { setPickStatus('No brain area there (medial wall). Pick a coloured area.'); return; }
+    selectArea(hit.side, hit.region);
+  });
+}
+
+// ---------- choosing where the disorder starts (needs scripts/explore.py) ----------
+const pickText = document.getElementById('pick-text'), pickControls = document.getElementById('pick-controls');
+const setPickStatus = t => document.getElementById('pick-status').textContent = t;
+function selectArea(side, region) {
+  if (!M.interactive) { setPickStatus(''); return; }
+  PICK.sel = { side, region };
+  const fi = D.functions[side].region[region];
+  const job = fi >= 0 ? D.functions[side].names[fi].replace(/_/g, ' ') : 'no assigned job';
+  pickText.innerHTML = `Selected: <b>${side} ${nice(side, region)}</b> · job: ${job} · the ${side === 'left' ? 'right' : 'left'} side will try to help`;
+  pickControls.hidden = false;
+  setPickStatus('');
+  redraw();
+}
+if (M.interactive) pickText.textContent = 'Click any area on either hemisphere to choose where the disorder starts.';
+else pickText.innerHTML = 'To choose where it starts, run <code>python scripts/explore.py</code> (or double-click <code>explore.bat</code>).';
+document.querySelectorAll('[data-kind]').forEach(b => b.onclick = () => {
+  PICK.type = b.dataset.kind;
+  document.querySelectorAll('[data-kind]').forEach(x => x.setAttribute('aria-pressed', x === b));
+});
+document.getElementById('pick-run').onclick = async () => {
+  if (!PICK.sel || PICK.busy) return;
+  const names = D.mesh[PICK.sel.side].names;
+  PICK.busy = true; setPickStatus('Running… (about 3 seconds)');
+  try {
+    const res = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hemisphere: PICK.sel.side, region: names[PICK.sel.region], type: PICK.type }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    applyRun(data);
+    const s = data.summary, pts = (s.benefit_of_callosum * 100).toFixed(1);
+    setPickStatus(`Done: function kept ${pct(s.connected.damaged_side_score)} connected vs ${pct(s.split.damaged_side_score)} split (${pts >= 0 ? '+' : ''}${pts} points of help).`);
+  } catch (err) {
+    setPickStatus('Could not run: ' + err.message + ' (is scripts/explore.py still running?)');
+  } finally { PICK.busy = false; }
+};
+function applyRun(data) {               // show a new run without reloading the page
+  D.conditions = data.conditions; D.summary = data.summary; D.functions = data.functions;
+  D.callosal_links = data.callosal_links;
+  M = Object.assign({}, M, data.meta, { interactive: M.interactive });
+  damaged = M.damaged; healthySide = damaged === 'left' ? 'right' : 'left';
+  towardDamaged = damaged === 'left' ? 'r2l' : 'l2r';
+  computeArrival(); computeMaxHelp(); setCaptions(); updateLegend();
+  HEMIS.forEach(placeMarker);
+  PICK.sel = null; pickControls.hidden = true;
+  pickText.textContent = 'Click another area to try a different start.';
+  setFrame(0); setPlaying(true);
 }
 
 // ---------- readouts, legend ----------
@@ -532,7 +631,9 @@ function updateLegend() {
 const bridge = document.getElementById('bridge'), bctx = bridge.getContext('2d');
 const particles = Array.from({ length: 70 }, () => ({ t: Math.random(), y: Math.random(), dir: Math.random() < 0.5 ? 1 : -1 }));
 function helpAmount(c, f) { return mean(c['into_' + damaged][f]) / SC; }
-const maxHelp = (() => { let mx = 1e-6; const c = D.conditions.connected; for (let f = 0; f < N; f++) mx = Math.max(mx, helpAmount(c, f)); return mx; })();
+let maxHelp = 1;
+function computeMaxHelp() { let mx = 1e-6; const c = D.conditions.connected; for (let f = 0; f < N; f++) mx = Math.max(mx, helpAmount(c, f)); maxHelp = mx; }
+computeMaxHelp();
 function drawBridge(f, dt) {
   const w = bridge.clientWidth, h = bridge.clientHeight, dpr = Math.min(devicePixelRatio, 2);
   if (!w || !h) return;
@@ -676,6 +777,11 @@ if (hash.has('functions')) { const cb = document.getElementById('show-functions'
 updateLegend();
 redraw();
 if (hash.has('paused')) movePulses(0.6);
+// e.g. #pick=right:R_FFC&run  chooses an area (and starts it) without clicking (for testing/screenshots)
+if (hash.has('pick')) {
+  const [side, name] = hash.get('pick').split(':'), r = (D.mesh[side]?.names || []).indexOf(name);
+  if (r >= 0) { selectArea(side, r); if (hash.has('run')) document.getElementById('pick-run').click(); }
+}
 requestAnimationFrame(loop);
 </script>
 </body>
