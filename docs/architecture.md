@@ -89,6 +89,20 @@ What the fit found (HCP group, `results/fit_20261122_000451`):
 Note on scores: a function score can go slightly **above 100%** when the healthy side sends its own copy
 of the job back across (takeover). The function is then carried partly by the other hemisphere.
 
+## Support from the healthy side, for every start area (scripts/support_map.py)
+Every one of the 360 areas was used as the start (3 seeds each; help = connected minus split brain).
+The code is left/right symmetric (tested on a mirror-image brain: identical help), so differences
+below come from the real wiring, the fitted settings and each side's jobs.
+- Left hemisphere damaged: the right side helps from all 180 start areas, mean +8.2 points
+  (95% CI +7.7 to +8.8). Most help when the start is in motor/touch areas (4, 1, 3b, 6d);
+  least in the temporal language areas along the STS.
+- Right hemisphere damaged: the left side helps less, mean +3.3 (+3.0 to +3.7); 159 areas
+  helped, 21 no real effect, none hurt overall.
+- Interference finding: when the right is damaged, its **vision** gets worse with the callosum
+  connected (-3.8 points, 142 of 180 starts), because the left hemisphere sends its own, different
+  half of the visual field. Each side's language/prosody can also be slightly hurt from a few starts.
+  This is a model result, not a tuned one.
+
 ## Assumptions and limitations (say these on the poster)
 
 - The wiring is a **group average** of many people, not one person's brain.
