@@ -38,8 +38,8 @@ class Brain:
         parts_left, parts_right = self.left.task_parts(t), self.right.task_parts(t)
         task_left, task_right = sum(parts_left.values()), sum(parts_right.values())
         cc = self.callosum
-        self.left.step(t, into_left, noise_left, partner_task=cc.takeover_by_left * task_right)
-        self.right.step(t, into_right, noise_right, partner_task=cc.takeover_by_right * task_left)
+        self.left.step(t, into_left, noise_left, partner_task=cc.takeover_by_left * task_right, task=task_left)
+        self.right.step(t, into_right, noise_right, partner_task=cc.takeover_by_right * task_left, task=task_right)
         if self.lesion:
             self.lesion.update(t)
         self.callosum.adapt(self.left, self.right)

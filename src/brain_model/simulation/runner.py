@@ -111,6 +111,7 @@ def summarize(results: dict, config: dict) -> dict:
             "damaged_side_score": float(res["score"][damaged][late:].mean()),
             "healthy_side_score": float(res["score"][healthy_side][late:].mean()),
             "final_mean_damage": float(res["run"][f"{damaged}_damage"][-1].mean()),
+            "healthy_side_final_damage": float(res["run"][f"{healthy_side}_damage"][-1].mean()),
             "functions": {side: {f: float(s[len(s) // 2:].mean()) for f, s in scores.items()}
                           for side, scores in res["function_scores"].items()},
         }

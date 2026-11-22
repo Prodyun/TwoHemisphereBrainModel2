@@ -29,14 +29,25 @@ from .. import anatomy
 # ---------- FUNCTION PATTERNS: how a job's input changes over time ----------
 # Each returns the input (one value per area of the job) at time step t.
 
-def _sequence(t, pos, step_length=20, groups=6):
-    """A pulse that moves front -> back through groups of areas, one group at a time
-    (like the words of a sentence, processed in order)."""
+def sequence_groups(pos, groups=6):
+    """Split areas into `groups` bands from front to back (used by the sequence pattern)."""
     groups = max(1, min(groups, len(pos)))
     y = pos[:, 1]
     edges = np.quantile(-y, np.linspace(0, 1, groups + 1)[1:-1])
-    group = np.digitize(-y, edges)
-    return (group == (t // step_length) % groups).astype(float)
+    return np.digitize(-y, edges), groups
+
+
+_SEQUENCE_BANDS: dict = {}
+
+
+def _sequence(t, pos, step_length=20, groups=6):
+    """A pulse that moves front -> back through groups of areas, one group at a time
+    (like the words of a sentence, processed in order)."""
+    key = (pos.tobytes(), groups)
+    if key not in _SEQUENCE_BANDS:  # the bands never change, so work them out once
+        _SEQUENCE_BANDS[key] = sequence_groups(pos, groups)
+    group, n_groups = _SEQUENCE_BANDS[key]
+    return (group == (t // step_length) % n_groups).astype(float)
 
 
 def _wave(t, pos, period_a=60, period_b=90):
@@ -143,8 +154,9 @@ class Hemisphere:
         return sum(self.task_parts(t).values())
 
     def step(self, t: int, callosal_input: np.ndarray, noise: np.ndarray,
-             partner_task: np.ndarray | None = None) -> np.ndarray:
-        task = self.task_input(t)
+             partner_task: np.ndarray | None = None, task: np.ndarray | None = None) -> np.ndarray:
+        if task is None:  # the Brain passes it in so it is only worked out once per step
+            task = self.task_input(t)
         if partner_task is not None:
             task = task + self.shared_task * partner_task
         own = self.gain * self.W @ self.x + self.stimulus_strength * task
