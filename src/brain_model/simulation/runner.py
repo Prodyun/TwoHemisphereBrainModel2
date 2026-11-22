@@ -1,16 +1,103 @@
-"""Runs the brain for N steps and collects the activity history."""
+"""Runs the brain over time and runs the full lesion experiment.
+
+The experiment (the science-fair comparison):
+  1. Connected brain:  healthy baseline run vs. lesion run, corpus callosum ON.
+  2. Split brain:      healthy baseline run vs. lesion run, corpus callosum OFF (the control).
+Every run uses the same random noise, so the only differences are the lesion and the callosum.
+
+"Function score" = how strongly a hemisphere's regions still carry their task signal,
+compared with the same hemisphere when healthy (1 = 100% of healthy, 0 = task signal gone).
+For each region we measure how much its activity rises and falls with its task input
+(a regression slope), sum over regions, and divide by the healthy run's value.
+"""
 import numpy as np
 
 from ..brain import Brain
 
 
-def run_simulation(config: dict) -> dict:
-    brain = Brain(config)
+def run_simulation(config: dict, with_lesion: bool = True) -> dict:
+    brain = Brain(config, with_lesion=with_lesion)
+    n, steps = config["n_regions"], config["steps"]
     rng = np.random.default_rng(config["seed"] + 1)
-    history = {"left": [], "right": []}
-    for _ in range(config["steps"]):
-        stimulus = rng.normal(size=config["input_size"])
-        out = brain.step(stimulus)
-        history["left"].append(out["left"])
-        history["right"].append(out["right"])
-    return {k: np.array(v) for k, v in history.items()}
+    sigma = config["dynamics"]["noise"]
+    noise = rng.normal(0, sigma, size=(2, steps, n))
+    history: dict[str, list] = {}
+    for t in range(steps):
+        for key, value in brain.step(t, noise[0, t], noise[1, t]).items():
+            history.setdefault(key, []).append(value)
+    out = {k: np.array(v) for k, v in history.items()}
+    out["lesion_center"] = brain.lesion.center_region if brain.lesion else -1
+    return out
+
+
+def task_signal(activity: np.ndarray, task: np.ndarray) -> float:
+    """Total task signal: sum over regions of slope(activity ~ task). Arrays are (time, regions)."""
+    a = activity - activity.mean(axis=0)
+    s = task - task.mean(axis=0)
+    var = (s ** 2).sum(axis=0)
+    ok = var > 0
+    return float(((a * s).sum(axis=0)[ok] / var[ok]).sum())
+
+
+def function_score(activity: np.ndarray, baseline: np.ndarray, task: np.ndarray,
+                   window: int) -> np.ndarray:
+    """Task signal in `activity` divided by task signal in the healthy `baseline`, per time window."""
+    scores = []
+    for start in range(0, len(activity) - window + 1, window):
+        sl = slice(start, start + window)
+        healthy = task_signal(baseline[sl], task[sl])
+        scores.append(task_signal(activity[sl], task[sl]) / healthy if healthy > 0 else 0.0)
+    return np.array(scores)
+
+
+def rolling_function_score(activity: np.ndarray, baseline: np.ndarray, task: np.ndarray,
+                           window: int, stride: int) -> list:
+    """Function score over the trailing `window` steps, at every `stride`-th step (None until full)."""
+    out = []
+    for t in range(0, len(activity), stride):
+        if t + 1 < window:
+            out.append(None)
+            continue
+        sl = slice(t + 1 - window, t + 1)
+        healthy = task_signal(baseline[sl], task[sl])
+        out.append(task_signal(activity[sl], task[sl]) / healthy if healthy > 0 else 0.0)
+    return out
+
+
+def with_strength(config: dict, strength: float) -> dict:
+    return {**config, "corpus_callosum": {**config["corpus_callosum"], "strength": strength}}
+
+
+def run_experiment(config: dict) -> dict:
+    """Run connected vs split-brain conditions and score both hemispheres in each."""
+    window = config["analysis"]["window"]
+    conditions = {"connected": config, "split": with_strength(config, 0.0)}
+    results = {}
+    for name, cfg in conditions.items():
+        healthy = run_simulation(cfg, with_lesion=False)
+        lesioned = run_simulation(cfg, with_lesion=True)
+        results[name] = {
+            "run": lesioned,
+            "healthy": healthy,
+            "score": {side: function_score(lesioned[side], healthy[side],
+                                           lesioned[f"{side}_task"], window)
+                      for side in ("left", "right")},
+        }
+    return results
+
+
+def summarize(results: dict, config: dict) -> dict:
+    """Average function score after the lesion has had time to spread (second half of the run)."""
+    damaged = config["lesion"]["hemisphere"]
+    healthy_side = "right" if damaged == "left" else "left"
+    summary = {"damaged_hemisphere": damaged}
+    for name, res in results.items():
+        late = len(res["score"][damaged]) // 2
+        summary[name] = {
+            "damaged_side_score": float(res["score"][damaged][late:].mean()),
+            "healthy_side_score": float(res["score"][healthy_side][late:].mean()),
+            "final_mean_damage": float(res["run"][f"{damaged}_damage"][-1].mean()),
+        }
+    summary["benefit_of_callosum"] = (summary["connected"]["damaged_side_score"]
+                                      - summary["split"]["damaged_side_score"])
+    return summary

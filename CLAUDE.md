@@ -18,3 +18,7 @@ Two-hemisphere (left/right) brain model, simulated with AI, in Python.
 ## User preferences
 - The owner is new to this kind of project: explain choices in plain language.
 - Add new instructions from the owner to this file so they carry across sessions.
+- This is a science fair project aiming for ISEF level. Keep the science honest: state the model's
+  assumptions and always compare against a control (the split brain).
+- Visual style for the simulation: black background, and the left and right hemispheres shown as
+  two separate 3D models that can each be rotated on their own.

@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Two-Hemisphere Brain Model</title>
+<style>
+  :root {
+    --bg: #000;
+    --text: #d6deea;
+    --muted: #7d8899;
+    --line: #1c222c;
+    --panel: rgba(10, 13, 18, 0.72);
+    --activity: #38e1ff;
+    --damage: #e0303f;
+    --help: #ffc03a;
+    --split: #8a93a3;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100vh; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline;
+    padding: 12px 16px 4px; }
+  h1 { font-size: 13px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; margin: 0; }
+  .sub { color: var(--muted); font-size: 13px; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr); min-height: 0; }
+  .panel { position: relative; min-height: 0; overflow: hidden; }
+  .panel canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+    cursor: grab; touch-action: none; }
+  .panel canvas:active { cursor: grabbing; }
+  .tag { position: absolute; top: 12px; left: 16px; pointer-events: none; }
+  .tag b { display: block; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; }
+  .tag span { color: var(--muted); font-size: 12px; }
+  .tag .state { display: block; margin-top: 6px; font-variant-numeric: tabular-nums; color: var(--text); }
+  .panel button.reset { position: absolute; top: 10px; right: 12px; }
+  .bridge { position: relative; }
+  .bridge canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .bridge .cap { position: absolute; bottom: 10px; width: 100%; text-align: center;
+    font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  footer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 12px 24px;
+    padding: 10px 16px 14px; border-top: 1px solid var(--line); }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  .controls { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  button, select { background: #10141b; color: var(--text); border: 1px solid #2a3240;
+    border-radius: 6px; padding: 5px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+  button:hover, select:hover { border-color: #46526a; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--activity); outline-offset: 2px; }
+  .seg { display: inline-flex; border: 1px solid #2a3240; border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; }
+  .seg button[aria-pressed="true"] { background: #1f2a3a; color: #fff; }
+  input[type=range] { flex: 1; min-width: 120px; accent-color: var(--activity); }
+  .time { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 110px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px;
+    vertical-align: -1px; }
+  label.chk { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); cursor: pointer; }
+  .chart { position: relative; height: 150px; min-width: 0; }
+  .chart canvas { width: 100%; height: 100%; display: block; }
+  .hint { color: var(--muted); font-size: 12px; }
+  @media (max-width: 760px) {
+    body { height: auto; }
+    main { grid-template-columns: 1fr; }
+    .panel { height: 58vh; }
+    .bridge { height: 44px; }
+    .bridge .cap { bottom: 2px; }
+    footer { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Two-Hemisphere Brain Model</h1>
+  <span class="sub" id="subtitle"></span>
+  <span class="hint">Drag a hemisphere to rotate it · scroll or pinch to zoom</span>
+</header>
+
+<main>
+  <section class="panel" id="panel-left" aria-label="Left hemisphere 3D view">
+    <div class="tag"><b>Left hemisphere</b><span id="spec-left"></span><span class="state" id="state-left"></span></div>
+    <button class="reset" data-side="left">Reset view</button>
+  </section>
+  <div class="bridge" aria-hidden="true"><canvas id="bridge"></canvas><div class="cap" id="bridge-cap">Corpus callosum</div></div>
+  <section class="panel" id="panel-right" aria-label="Right hemisphere 3D view">
+    <div class="tag"><b>Right hemisphere</b><span id="spec-right"></span><span class="state" id="state-right"></span></div>
+    <button class="reset" data-side="right">Reset view</button>
+  </section>
+</main>
+
+<footer>
+  <div class="controls">
+    <div class="row">
+      <button id="play" aria-label="Pause">Pause</button>
+      <input type="range" id="slider" min="0" value="0" aria-label="Time step">
+      <span class="time" id="time"></span>
+      <select id="speed" aria-label="Playback speed">
+        <option value="0.5">0.5×</option><option value="1" selected>1×</option>
+        <option value="2">2×</option><option value="4">4×</option>
+      </select>
+    </div>
+    <div class="row">
+      <div class="seg" role="group" aria-label="Condition">
+        <button data-cond="connected" aria-pressed="true">Connected brain</button>
+        <button data-cond="split" aria-pressed="false">Split brain (callosum cut)</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="show-help" checked> Show help from other side</label>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--activity)"></i>Activity</span>
+      <span><i style="background:var(--damage)"></i>Damage</span>
+      <span><i style="background:var(--help)"></i>Signals arriving from the healthy side</span>
+    </div>
+  </div>
+  <div class="chart"><canvas id="chart" aria-label="Function score chart"></canvas></div>
+</footer>
+
+<script id="brain-data" type="application/json">__BRAIN_DATA__</script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const D = JSON.parse(document.getElementById('brain-data').textContent);
+const M = D.meta, N = M.n_frames;
+const damaged = M.damaged, healthySide = damaged === 'left' ? 'right' : 'left';
+const NICE = { language_logic: 'language · logic · sequences', spatial_holistic: 'spatial · patterns · big picture' };
+const state = { cond: 'connected', frame: 0, playing: true, speed: 1, showHelp: true, acc: 0 };
+
+document.getElementById('spec-left').textContent = NICE[D.specialization.left] || D.specialization.left;
+document.getElementById('spec-right').textContent = NICE[D.specialization.right] || D.specialization.right;
+document.getElementById('subtitle').textContent =
+  `A disorder starts in the ${damaged} hemisphere at step ${M.start_step} and spreads`;
+
+// ---------- one independent 3D viewer per hemisphere ----------
+function makeViewer(side) {
+  const el = document.getElementById('panel-' + side);
+  const m = D.mesh[side];
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setClearColor(0x000000, 1);
+  el.prepend(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 50);
+  const home = new THREE.Vector3(side === 'left' ? -4.3 : 4.3, 1.0, 0.0);
+  scene.add(new THREE.HemisphereLight(0xc8d6ff, 0x050508, 0.55));
+  const key = new THREE.DirectionalLight(0xffffff, 1.9);
+  key.position.set(0.3, 1.4, 0.8);  // light from above-front, so the folds cast shading
+  camera.add(key);  // light follows the camera, so the side you look at is always lit
+  scene.add(camera);
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(m.v, 3));
+  geo.setIndex(m.f);
+  geo.computeVertexNormals();
+  const colors = new Float32Array(m.v.length);
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  scene.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0 })));
+
+  // faint glow shell
+  const glow = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    color: 0x2a6cff, transparent: true, opacity: 0.07, side: THREE.BackSide, depthWrite: false }));
+  glow.scale.setScalar(1.04);
+  scene.add(glow);
+
+  // marker where the disorder started
+  let marker = null;
+  if (side === damaged) {
+    const c = m.centers[M.lesion_center];
+    const p = new THREE.Vector3(c[0], c[1], c[2]);
+    marker = new THREE.Mesh(new THREE.SphereGeometry(0.025, 16, 12),
+      new THREE.MeshBasicMaterial({ color: 0xff4455 }));
+    marker.position.copy(p.multiplyScalar(1.03));
+    scene.add(marker);
+  }
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.enablePan = false;
+  controls.minDistance = 1.5;
+  controls.maxDistance = 7;
+  const reset = () => { camera.position.copy(home); camera.up.set(0, 1, 0); controls.target.set(0, 0, 0); controls.update(); };
+  reset();
+
+  const resize = () => {
+    const w = el.clientWidth, h = el.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  };
+  new ResizeObserver(resize).observe(el);
+  resize();
+  return { side, m, geo, colors, renderer, scene, camera, controls, reset, marker };
+}
+
+const viewers = { left: makeViewer('left'), right: makeViewer('right') };
+document.querySelectorAll('button.reset').forEach(b => b.onclick = () => viewers[b.dataset.side].reset());
+
+function paint(v, f) {
+  const c = D.conditions[state.cond];
+  const act = c[v.side][f], dmg = c[v.side + '_damage'][f], help = c['into_' + v.side][f];
+  const vr = v.m.vr, vw = v.m.vw, col = v.colors, n = vr.length / 3;
+  for (let i = 0; i < n; i++) {
+    let a = 0, d = 0, h = 0;
+    for (let k = 0; k < 3; k++) {
+      const r = vr[3 * i + k], w = vw[3 * i + k];
+      a += w * act[r]; d += w * dmg[r]; h += w * Math.abs(help[r]);
+    }
+    a /= 100; d /= 100; h /= 100;
+    const pos = Math.max(a, 0), neg = Math.max(-a, 0);
+    let R = 0.07 + 0.12 * pos + 0.10 * neg;
+    let G = 0.09 + 0.80 * pos + 0.03 * neg;
+    let B = 0.16 + 0.85 * pos + 0.30 * neg;
+    const dd = Math.min(1, Math.sqrt(d) * 1.1);   // even mild damage shows clearly
+    R = R * (1 - dd) + 0.95 * dd; G = G * (1 - dd) + 0.06 * dd; B = B * (1 - dd) + 0.08 * dd;
+    if (state.showHelp) {           // help that lands in damaged tissue
+      const g = Math.min(1, 2.2 * h * d);
+      R += 1.0 * g; G += 0.68 * g; B += 0.12 * g;
+    }
+    col[3 * i] = R; col[3 * i + 1] = G; col[3 * i + 2] = B;
+  }
+  v.geo.attributes.color.needsUpdate = true;
+  if (v.marker) v.marker.visible = f * M.stride >= M.start_step;
+}
+
+// ---------- readouts ----------
+const pct = x => (x == null ? '–' : Math.round(x * 100) + '%');
+function mean(a) { let s = 0; for (const x of a) s += x; return s / a.length; }
+function updateText(f) {
+  const c = D.conditions[state.cond];
+  for (const side of ['left', 'right']) {
+    const dm = mean(c[side + '_damage'][f]) / 100;
+    const sc = c['score_' + side][f];
+    document.getElementById('state-' + side).textContent =
+      `Damage ${pct(dm)} · Function ${pct(sc)}`;
+  }
+  document.getElementById('time').textContent = `Step ${f * M.stride} / ${M.steps}`;
+  document.getElementById('slider').value = f;
+}
+
+// ---------- corpus callosum strip: particles flow toward the damaged side ----------
+const bridge = document.getElementById('bridge'), bctx = bridge.getContext('2d');
+const particles = Array.from({ length: 70 }, () => ({ t: Math.random(), y: Math.random(), dir: Math.random() < 0.5 ? 1 : -1 }));
+const maxHelp = (() => {
+  const c = D.conditions.connected; let mx = 1e-6;
+  for (let f = 0; f < N; f++) mx = Math.max(mx, helpAmount(c, f));
+  return mx;
+})();
+function helpAmount(c, f) {  // help landing in damaged tissue, averaged over regions
+  const h = c['into_' + damaged][f], d = c[damaged + '_damage'][f];
+  let s = 0; for (let i = 0; i < h.length; i++) s += Math.abs(h[i]) * d[i];
+  return s / h.length / 1e4;
+}
+function drawBridge(f, dt) {
+  const w = bridge.clientWidth, h = bridge.clientHeight, dpr = Math.min(devicePixelRatio, 2);
+  if (bridge.width !== Math.round(w * dpr) || bridge.height !== Math.round(h * dpr)) {
+    bridge.width = Math.round(w * dpr); bridge.height = Math.round(h * dpr);
+  }
+  bctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  bctx.clearRect(0, 0, w, h);
+  const vertical = w < h;              // side-by-side layout: particles move left/right
+  const len = vertical ? w : h, span = vertical ? h : w;
+  const cap = document.getElementById('bridge-cap');
+  if (state.cond === 'split') {
+    bctx.strokeStyle = '#e0303f'; bctx.setLineDash([6, 6]); bctx.lineWidth = 1.5;
+    bctx.beginPath();
+    if (vertical) { bctx.moveTo(w / 2, 16); bctx.lineTo(w / 2, h - 28); } else { bctx.moveTo(16, h / 2); bctx.lineTo(w - 16, h / 2); }
+    bctx.stroke(); bctx.setLineDash([]);
+    cap.textContent = 'Callosum cut';
+    return;
+  }
+  cap.textContent = 'Corpus callosum';
+  const help = helpAmount(D.conditions.connected, f) / maxHelp;   // 0..1
+  const towardDamaged = damaged === 'left' ? -1 : 1;
+  for (const p of particles) {
+    const isHelp = p.dir === towardDamaged;
+    const speed = isHelp ? 0.35 + 0.9 * help : 0.35;
+    p.t += dt * speed * state.speed * (state.playing ? 1 : 0.15);
+    if (p.t > 1) { p.t -= 1; p.y = Math.random(); }
+    const along = p.dir > 0 ? p.t : 1 - p.t;
+    const x = along * len, y = 16 + p.y * (span - 44);
+    const a = Math.sin(Math.PI * p.t);
+    bctx.fillStyle = isHelp
+      ? `rgba(255,192,58,${(0.25 + 0.75 * help) * a})`
+      : `rgba(56,225,255,${0.35 * a})`;
+    const r = isHelp ? 1.4 + 1.8 * help : 1.3;
+    bctx.beginPath();
+    if (vertical) bctx.arc(x, y, r, 0, 6.283); else bctx.arc(y, x, r, 0, 6.283);
+    bctx.fill();
+  }
+}
+
+// ---------- chart: function of the damaged hemisphere, connected vs split ----------
+const chart = document.getElementById('chart'), cctx = chart.getContext('2d');
+function drawChart(f) {
+  const w = chart.clientWidth, h = chart.clientHeight, dpr = Math.min(devicePixelRatio, 2);
+  if (chart.width !== Math.round(w * dpr) || chart.height !== Math.round(h * dpr)) {
+    chart.width = Math.round(w * dpr); chart.height = Math.round(h * dpr);
+  }
+  const ctx = cctx; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+  const L = 40, R = 12, T = 22, B = 20, pw = w - L - R, ph = h - T - B, ymax = 1.2;
+  const X = i => L + (i / (N - 1)) * pw, Y = v => T + ph - (Math.min(v, ymax) / ymax) * ph;
+  ctx.font = '11px system-ui, sans-serif'; ctx.textBaseline = 'middle';
+  // grid
+  for (const v of [0, 0.5, 1]) {
+    ctx.strokeStyle = '#1c222c'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(L, Y(v)); ctx.lineTo(L + pw, Y(v)); ctx.stroke();
+    ctx.fillStyle = '#7d8899'; ctx.textAlign = 'right'; ctx.fillText(Math.round(v * 100) + '%', L - 6, Y(v));
+  }
+  // damage area (current condition)
+  const c = D.conditions[state.cond];
+  ctx.fillStyle = 'rgba(224,48,63,0.18)'; ctx.beginPath(); ctx.moveTo(X(0), Y(0));
+  for (let i = 0; i < N; i++) ctx.lineTo(X(i), Y(mean(c[damaged + '_damage'][i]) / 100));
+  ctx.lineTo(X(N - 1), Y(0)); ctx.closePath(); ctx.fill();
+  // lines
+  const series = [['split', '#8a93a3'], ['connected', '#38e1ff']];
+  for (const [name, color] of series) {
+    const s = D.conditions[name]['score_' + damaged];
+    ctx.strokeStyle = color; ctx.lineWidth = name === state.cond ? 2.2 : 1.2;
+    ctx.globalAlpha = name === state.cond ? 1 : 0.55;
+    ctx.beginPath(); let started = false;
+    for (let i = 0; i < N; i++) { if (s[i] == null) continue; started ? ctx.lineTo(X(i), Y(s[i])) : ctx.moveTo(X(i), Y(s[i])); started = true; }
+    ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  // cursor
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(X(f), T); ctx.lineTo(X(f), T + ph); ctx.stroke();
+  // title + key
+  ctx.textAlign = 'left'; ctx.fillStyle = '#d6deea';
+  ctx.fillText(`${damaged[0].toUpperCase() + damaged.slice(1)} hemisphere function (vs. healthy)`, L, 9);
+  const keys = [['Connected', '#38e1ff'], ['Split brain', '#8a93a3'], ['Damage', 'rgba(224,48,63,0.6)']];
+  let kx = L + pw; ctx.textAlign = 'right';
+  for (const [label, color] of keys.reverse()) {
+    ctx.fillStyle = '#7d8899'; ctx.fillText(label, kx, 9); const tw = ctx.measureText(label).width;
+    ctx.fillStyle = color; ctx.fillRect(kx - tw - 14, 5, 9, 9); kx -= tw + 28;
+  }
+  ctx.fillStyle = '#7d8899'; ctx.textAlign = 'left'; ctx.fillText('time →', L, h - 8);
+}
+chart.addEventListener('pointerdown', e => {
+  const r = chart.getBoundingClientRect(), L = 40, pw = r.width - 52;
+  setFrame(Math.round(Math.max(0, Math.min(1, (e.clientX - r.left - L) / pw)) * (N - 1)));
+});
+
+// ---------- controls ----------
+const slider = document.getElementById('slider'); slider.max = N - 1;
+function setFrame(f) { state.frame = f; state.acc = 0; redraw(); }
+function redraw() {
+  paint(viewers.left, state.frame); paint(viewers.right, state.frame);
+  updateText(state.frame); drawChart(state.frame);
+}
+slider.oninput = () => setFrame(+slider.value);
+const playBtn = document.getElementById('play');
+playBtn.onclick = () => {
+  state.playing = !state.playing;
+  if (state.playing && state.frame >= N - 1) setFrame(0);
+  playBtn.textContent = state.playing ? 'Pause' : 'Play';
+  playBtn.setAttribute('aria-label', playBtn.textContent);
+};
+document.getElementById('speed').onchange = e => state.speed = +e.target.value;
+document.getElementById('show-help').onchange = e => { state.showHelp = e.target.checked; redraw(); };
+document.querySelectorAll('.seg button').forEach(b => b.onclick = () => {
+  state.cond = b.dataset.cond;
+  document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  redraw();
+});
+addEventListener('keydown', e => { if (e.code === 'Space' && e.target.tagName !== 'BUTTON') { e.preventDefault(); playBtn.click(); } });
+new ResizeObserver(() => drawChart(state.frame)).observe(chart);
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (state.playing) {
+    state.acc += dt * 15 * state.speed;            // ~15 frames per second at 1x
+    if (state.acc >= 1) {
+      const next = Math.min(N - 1, state.frame + Math.floor(state.acc));
+      state.acc %= 1; state.frame = next; redraw();
+      if (next >= N - 1) { state.playing = false; playBtn.textContent = 'Play'; }
+    }
+  }
+  for (const v of Object.values(viewers)) { v.controls.update(); v.renderer.render(v.scene, v.camera); }
+  drawBridge(state.frame, dt);
+  requestAnimationFrame(loop);
+}
+// Optional link settings, e.g. viewer.html#frame=150&cond=split&paused  (handy for screenshots)
+const hash = new URLSearchParams(location.hash.slice(1));
+if (hash.has('frame')) state.frame = Math.max(0, Math.min(N - 1, +hash.get('frame') || 0));
+if (hash.get('cond') === 'split') document.querySelector('.seg button[data-cond="split"]').click();
+if (hash.has('paused')) { state.playing = false; playBtn.textContent = 'Play'; }
+redraw();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

@@ -1,18 +1,45 @@
-# Default simulation settings. To try a variation, copy this file
-# (e.g. configs/split_brain.yaml) and run it with --config.
+# Default experiment: a lesion starts in the LEFT hemisphere and spreads.
+# We compare a connected brain (corpus callosum on) with a split brain (off)
+# to see how much the healthy hemisphere helps the damaged one keep working.
+# To try a variation, copy this file (e.g. configs/right_lesion.yaml) and run it with --config.
 seed: 42
-steps: 100
+steps: 960            # simulation time steps (8 full task cycles of 120 steps)
+frame_stride: 4       # keep every 4th step for the 3D viewer (smaller file)
 
-input_size: 8        # size of the sensory input vector
-hidden_size: 16      # neurons per hemisphere
+n_regions: 180        # brain regions per hemisphere (180 = the HCP Glasser atlas)
 
+# Shared brain-region dynamics (both hemispheres)
+dynamics:
+  leak: 0.2           # how fast a region's activity relaxes (0..1 per step)
+  gain: 0.5           # how strongly regions drive their neighbours (<1 keeps it stable)
+  noise: 0.05         # random background activity
+  stimulus: 0.6       # strength of the "task" input each hemisphere receives
+  shared_task: 0.3    # each side also does a weaker copy of the other side's task (0 = none)
+
+# Left and right are built differently so they are distinct models.
 left_hemisphere:
-  specialization: "language_logic"    # sequential / analytical processing
-  learning_rate: 0.01
-
+  specialization: "language_logic"    # sequential task input (a front-to-back pulse sequence)
+  neighbors: 8                        # each region connects to its 8 nearest regions
+  long_range_fraction: 0.05           # few long-distance links -> more local, modular network
 right_hemisphere:
-  specialization: "spatial_holistic"  # pattern / spatial processing
-  learning_rate: 0.01
+  specialization: "spatial_holistic"  # smooth, whole-hemisphere wave as task input
+  neighbors: 8
+  long_range_fraction: 0.20           # more long-distance links -> more integrated network
 
 corpus_callosum:
-  strength: 0.5      # 0 = fully disconnected ("split brain"), 1 = fully merged
+  strength: 0.5          # 0 = cut ("split brain"), 1 = strongest link to the mirror region
+  plasticity_rate: 0.02  # how fast the brain adapts to damage (0 = no adaptation)
+  plasticity_gain: 1.5   # how much stronger it can get in fully damaged regions (1.5 = +150%)
+  takeover_gain: 3.0     # how much more of the damaged side's task the healthy side can take on
+
+lesion:
+  hemisphere: left       # left or right
+  location: [-0.45, 0.35, 0.15]   # x (side), y (front), z (up); this is the left frontal side
+  start_step: 120        # when the disorder appears
+  initial_damage: 0.6    # damage at the starting region (0 = healthy, 1 = destroyed)
+  spread_rate: 0.007    # how fast damage spreads along connections each step
+  max_damage: 0.98       # damaged regions keep a little function
+  cross_spread: 0.0      # damage that leaks to the other hemisphere through the callosum
+
+analysis:
+  window: 120            # steps per scoring window (= one full task cycle)
