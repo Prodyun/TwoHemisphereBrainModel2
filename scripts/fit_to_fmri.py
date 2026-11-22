@@ -154,7 +154,12 @@ def apply_settings(config: Path, g: dict, fit_dir: Path) -> None:
                       rf"\g<1>{g['strength']:.3f}", text, count=1, flags=re.M)
     if n != 1:
         raise SystemExit(f"could not find corpus_callosum.strength in {config}")
-    text = re.sub(r"scripts/fit_to_fmri.py \(results/[^)]*\)", f"scripts/fit_to_fmri.py ({fit_dir.as_posix()})", text)
+    try:  # a short project path only: the repo is public, so no personal folder names
+        fit_dir = fit_dir.resolve().relative_to(Path.cwd().resolve())
+    except ValueError:
+        fit_dir = Path(fit_dir.name)
+    text = re.sub(r"scripts/fit_to_fmri.py \((?:[A-Za-z]:)?[^)]*results/[^)]*\)",
+                  f"scripts/fit_to_fmri.py ({fit_dir.as_posix()})", text)
     config.write_text(text, encoding="utf-8")
 
 

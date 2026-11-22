@@ -102,10 +102,11 @@ def fig_benefit_by_experiment(rows, out: Path) -> None:
     ax.grid(axis="x", color=GRID, lw=0.8)
     ax.set_axisbelow(True)
     ax.set_xlabel("Help from the healthy hemisphere (percentage points of function)")
-    ax.set_title("How much the corpus callosum helps the damaged hemisphere")
+    fig.suptitle("How much the corpus callosum helps the damaged hemisphere", x=0.02, ha="left",
+                 fontsize=11, fontweight="bold", color=INK)
     fig.text(0.01, 0.01, "Dot = mean over start areas, line = 95% CI, faint dots = individual start areas",
              color=INK2, fontsize=8)
-    fig.tight_layout(rect=(0, 0.04, 1, 1))
+    fig.tight_layout(rect=(0, 0.04, 1, 0.97))
     fig.savefig(out, dpi=200)
     plt.close(fig)
 
@@ -164,7 +165,7 @@ def fig_time_course(cfg: dict, out: Path) -> dict:
         y_hi, y_lo = mid + 3.5, mid - 3.5
     ax.text(t[-1] + 10, y_hi, f"{hi} {ends[hi]:.0f}%", color=INK, va="center", fontsize=9)
     ax.text(t[-1] + 10, y_lo, f"{lo} {ends[lo]:.0f}%", color=INK, va="center", fontsize=9)
-    ax.legend(frameon=False, fontsize=8, loc="lower left")
+    ax.legend(frameon=False, fontsize=8, loc="lower left", bbox_to_anchor=(0.02, 0.2))
     ax.axvline(cfg["lesion"]["start_step"], color=INK2, lw=0.8, ls=":")
     ax.text(cfg["lesion"]["start_step"] + 8, 8, "disorder starts", color=INK2, fontsize=8)
     ax.set_ylim(0, 110)
@@ -175,7 +176,7 @@ def fig_time_course(cfg: dict, out: Path) -> dict:
     ax.set_axisbelow(True)
     region = cfg["lesion"].get("region", "")
     ax.set_title(f"Left hemisphere over time, disorder starting at {region} (Broca's area)", loc="left")
-    fig.tight_layout(rect=(0, 0, 0.78, 1))
+    fig.tight_layout(rect=(0, 0, 0.84, 1))
     fig.savefig(out, dpi=200)
     plt.close(fig)
     return summary

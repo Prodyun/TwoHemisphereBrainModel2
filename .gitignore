@@ -20,3 +20,6 @@ Thumbs.db
 
 # Secrets
 .env
+
+# Backups written by scripts (e.g. fit_to_fmri.py --apply)
+*.bak
