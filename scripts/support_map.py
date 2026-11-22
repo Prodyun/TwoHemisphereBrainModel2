@@ -17,6 +17,7 @@ import copy
 import csv
 import importlib.util
 import os
+import sys
 from collections import defaultdict
 from multiprocessing import Pool
 from pathlib import Path
@@ -37,6 +38,7 @@ from brain_model.utils import load_config  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location("run_batch", Path(__file__).with_name("run_batch.py"))
 run_batch = importlib.util.module_from_spec(_spec)
+sys.modules["run_batch"] = run_batch  # so worker processes can find run_batch.run_one
 _spec.loader.exec_module(run_batch)
 
 INK, INK2 = "#0b0b0b", "#52514e"
