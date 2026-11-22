@@ -19,14 +19,26 @@ def run_simulation(config: dict, with_lesion: bool = True) -> dict:
     brain = Brain(config, with_lesion=with_lesion)
     n, steps = config["n_regions"], config["steps"]
     rng = np.random.default_rng(config["seed"] + 1)
-    sigma = config["dynamics"]["noise"]
-    noise = rng.normal(0, sigma, size=(2, steps, n))
+    # Same random numbers in every run; each hemisphere scales them by its own noise level.
+    noise = rng.normal(0, 1, size=(2, steps, n))
+    noise[0] *= brain.left.noise
+    noise[1] *= brain.right.noise
     history: dict[str, list] = {}
     for t in range(steps):
         for key, value in brain.step(t, noise[0, t], noise[1, t]).items():
             history.setdefault(key, []).append(value)
     out = {k: np.array(v) for k, v in history.items()}
     out["lesion_center"] = brain.lesion.center_region if brain.lesion else -1
+    out["functions"] = {h.name: {f.name: f.regions for f in h.functions} for h in (brain.left, brain.right)}
+    return out
+
+
+def function_scores(lesioned: dict, healthy: dict, side: str, window: int) -> dict[str, np.ndarray]:
+    """Function score of each job separately, using only that job's areas and its own input."""
+    out = {}
+    for name, regions in lesioned["functions"][side].items():
+        task = lesioned[f"{side}_task:{name}"][:, regions]
+        out[name] = function_score(lesioned[side][:, regions], healthy[side][:, regions], task, window)
     return out
 
 
@@ -82,6 +94,8 @@ def run_experiment(config: dict) -> dict:
             "score": {side: function_score(lesioned[side], healthy[side],
                                            lesioned[f"{side}_task"], window)
                       for side in ("left", "right")},
+            "function_scores": {side: function_scores(lesioned, healthy, side, window)
+                                for side in ("left", "right")},
         }
     return results
 
@@ -97,7 +111,12 @@ def summarize(results: dict, config: dict) -> dict:
             "damaged_side_score": float(res["score"][damaged][late:].mean()),
             "healthy_side_score": float(res["score"][healthy_side][late:].mean()),
             "final_mean_damage": float(res["run"][f"{damaged}_damage"][-1].mean()),
+            "functions": {side: {f: float(s[len(s) // 2:].mean()) for f, s in scores.items()}
+                          for side, scores in res["function_scores"].items()},
         }
     summary["benefit_of_callosum"] = (summary["connected"]["damaged_side_score"]
                                       - summary["split"]["damaged_side_score"])
+    summary["function_benefit"] = {
+        f: summary["connected"]["functions"][damaged][f] - summary["split"]["functions"][damaged][f]
+        for f in summary["connected"]["functions"][damaged]}
     return summary

@@ -25,18 +25,45 @@ def _ints(a: np.ndarray, scale: float = 100) -> list:
     return np.round(np.asarray(a) * scale).astype(int).tolist()
 
 
-def _mesh_payload(side: int, n_regions: int) -> dict:
-    verts, faces = anatomy.hemisphere_mesh(side)
-    centers = anatomy.region_centers(n_regions, side)
-    idx, w = anatomy.vertex_region_weights(verts, centers)
+def _mesh_payload(config: dict, side_name: str) -> dict:
+    """The 3D surface of one hemisphere and which brain region colours each surface point.
+
+    Stand-in: a smooth hand-made surface; each point blends its 3 nearest regions.
+    Real brain: the HCP cortical surface; each point belongs to exactly one Glasser area
+    (-1 = medial wall, the inner face where the hemispheres join, which has no area)."""
+    anat = config.get("anatomy") or {}
+    if anat.get("source", "synthetic") == "hcp":
+        from ..hcp import DEFAULT_FILE, load_hcp_brain
+        s = load_hcp_brain(anat.get("file", DEFAULT_FILE)).sides[side_name]
+        verts, faces = s["verts"].astype(float), s["faces"]
+        idx, w, k = s["vertex_region"].astype(int), None, 1
+        markers = s["anchors"]  # a point on the surface of each area
+    else:
+        side = SIDES[side_name]
+        verts, faces = anatomy.hemisphere_mesh(side)
+        centers = anatomy.region_centers(config["n_regions"], side)
+        idx, w = anatomy.vertex_region_weights(verts, centers)
+        k, markers = idx.shape[1], centers
     middle = verts.mean(axis=0)  # each model rotates around its own middle
-    return {
+    out = {
+        "k": k,
         "v": np.round(_to_three(verts - middle), 4).ravel().tolist(),
-        "f": faces.ravel().tolist(),
-        "vr": idx.ravel().tolist(),
-        "vw": np.round(w, 3).ravel().tolist(),
-        "centers": np.round(_to_three(centers - middle), 4).tolist(),
+        "f": np.asarray(faces).ravel().tolist(),
+        "vr": np.asarray(idx).ravel().tolist(),
+        "centers": np.round(_to_three(markers - middle), 4).tolist(),
     }
+    if w is not None:
+        out["vw"] = np.round(w, 3).ravel().tolist()
+    return out
+
+
+def _function_payload(run: dict, side: str, n_regions: int) -> dict:
+    """Which function (job) each region belongs to, for the 'show functions' overlay."""
+    names = list(run["functions"][side])
+    region_function = np.full(n_regions, -1)
+    for i, name in enumerate(names):
+        region_function[run["functions"][side][name]] = i
+    return {"names": names, "region": region_function.tolist()}
 
 
 def build_viewer(config: dict, results: dict, summary: dict, path: str | Path) -> Path:
@@ -62,9 +89,12 @@ def build_viewer(config: dict, results: dict, summary: dict, path: str | Path) -
             "start_step": config["lesion"]["start_step"],
             "lesion_center": int(first["lesion_center"]),
             "strength": config["corpus_callosum"]["strength"],
+            "wiring": config["corpus_callosum"].get("wiring", "mirror"),
+            "lesion_type": config["lesion"].get("type", "spreading"),
         },
         "specialization": {s: config[f"{s}_hemisphere"]["specialization"] for s in SIDES},
-        "mesh": {s: _mesh_payload(v, config["n_regions"]) for s, v in SIDES.items()},
+        "mesh": {s: _mesh_payload(config, s) for s in SIDES},
+        "functions": {s: _function_payload(first, s, config["n_regions"]) for s in SIDES},
         "conditions": conditions,
         "summary": summary,
     }

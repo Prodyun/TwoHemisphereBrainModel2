@@ -1,15 +1,16 @@
-"""Right hemisphere: holistic / spatial processing (shapes, scenes, big-picture patterns)."""
-import numpy as np
+"""Right hemisphere: holistic / spatial processing.
 
+Real-brain mode (configs/hcp.yaml): its jobs are visuospatial attention, face recognition and
+emotion in the voice (prosody), all right-dominant in most people, plus vision and movement for
+the LEFT half of the body and visual field.
+
+Stand-in mode: one job, smooth waves sweeping across the whole hemisphere at once, like taking in
+an entire picture rather than one piece at a time.
+"""
 from .base import Hemisphere
 
 
 class RightHemisphere(Hemisphere):
     name = "right"
     side = 1
-
-    def task_input(self, t: int) -> np.ndarray:
-        # Smooth waves that sweep across the whole hemisphere at once,
-        # like taking in an entire picture rather than one piece at a time.
-        y, z = self.centers[:, 1], self.centers[:, 2]
-        return 0.5 * (np.sin(2 * np.pi * t / 60 + 3 * y) + np.cos(2 * np.pi * t / 90 + 4 * z))
+    default_pattern = "wave"

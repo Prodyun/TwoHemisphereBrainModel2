@@ -39,6 +39,11 @@ def main() -> None:
     print(f"  connected brain: {con['damaged_side_score']:.0%}")
     print(f"  split brain:     {spl['damaged_side_score']:.0%}")
     print(f"  -> help from the other hemisphere: {summary['benefit_of_callosum'] * 100:+.0f} percentage points")
+    if len(summary["function_benefit"]) > 1:
+        print("Each job of the damaged hemisphere (connected vs split brain):")
+        for name, benefit in summary["function_benefit"].items():
+            c, s = con["functions"][side][name], spl["functions"][side][name]
+            print(f"  {name.replace('_', ' '):18s} {c:4.0%} vs {s:4.0%}  ({benefit * 100:+.0f} points)")
     print(f"Saved results to {out_dir}")
     if not args.no_open:
         webbrowser.open(viewer.resolve().as_uri())

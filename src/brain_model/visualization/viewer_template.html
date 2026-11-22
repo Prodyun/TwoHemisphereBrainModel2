@@ -17,6 +17,7 @@
     --split: #8a93a3;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
     font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
   body { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100vh; }
@@ -104,7 +105,9 @@
         <button data-cond="split" aria-pressed="false">Split brain (callosum cut)</button>
       </div>
       <label class="chk"><input type="checkbox" id="show-help" checked> Show help from other side</label>
+      <label class="chk"><input type="checkbox" id="show-functions"> Show functions</label>
     </div>
+    <div class="legend" id="func-legend" hidden></div>
     <div class="legend">
       <span><i style="background:var(--activity)"></i>Activity</span>
       <span><i style="background:var(--damage)"></i>Damage</span>
@@ -129,12 +132,13 @@ const D = JSON.parse(document.getElementById('brain-data').textContent);
 const M = D.meta, N = M.n_frames;
 const damaged = M.damaged, healthySide = damaged === 'left' ? 'right' : 'left';
 const NICE = { language_logic: 'language · logic · sequences', spatial_holistic: 'spatial · patterns · big picture' };
-const state = { cond: 'connected', frame: 0, playing: true, speed: 1, showHelp: true, acc: 0 };
+const state = { cond: 'connected', frame: 0, playing: true, speed: 1, showHelp: true, showFunctions: false, acc: 0 };
 
 document.getElementById('spec-left').textContent = NICE[D.specialization.left] || D.specialization.left;
 document.getElementById('spec-right').textContent = NICE[D.specialization.right] || D.specialization.right;
-document.getElementById('subtitle').textContent =
-  `A disorder starts in the ${damaged} hemisphere at step ${M.start_step} and spreads`;
+document.getElementById('subtitle').textContent = M.lesion_type === 'stroke'
+  ? `A stroke hits the ${damaged} hemisphere at step ${M.start_step}`
+  : `A disorder starts in the ${damaged} hemisphere at step ${M.start_step} and spreads`;
 
 // ---------- one independent 3D viewer per hemisphere ----------
 function makeViewer(side) {
@@ -202,14 +206,26 @@ function makeViewer(side) {
 const viewers = { left: makeViewer('left'), right: makeViewer('right') };
 document.querySelectorAll('button.reset').forEach(b => b.onclick = () => viewers[b.dataset.side].reset());
 
+// colours for the "show functions" overlay (one per job of a hemisphere)
+const FUNC_COLORS = [[0.95, 0.55, 0.20], [0.55, 0.85, 0.35], [0.75, 0.45, 0.95], [0.35, 0.70, 0.95],
+  [0.95, 0.85, 0.35], [0.95, 0.45, 0.65], [0.40, 0.90, 0.80], [0.85, 0.65, 0.45]];
+// the same job (e.g. vision, done by both sides) gets the same colour in both hemispheres
+const FUNC_ORDER = [...new Set([...D.functions.left.names, ...D.functions.right.names])];
+const funcColor = side => D.functions[side].names.map(n => FUNC_COLORS[FUNC_ORDER.indexOf(n) % FUNC_COLORS.length]);
+const FUNC_COLOR_BY_SIDE = { left: funcColor('left'), right: funcColor('right') };
 function paint(v, f) {
   const c = D.conditions[state.cond];
   const act = c[v.side][f], dmg = c[v.side + '_damage'][f], help = c['into_' + v.side][f];
-  const vr = v.m.vr, vw = v.m.vw, col = v.colors, n = vr.length / 3;
+  const K = v.m.k, vr = v.m.vr, vw = v.m.vw, col = v.colors, n = vr.length / K;
+  const regionFunc = D.functions[v.side].region;
   for (let i = 0; i < n; i++) {
+    if (K === 1 && vr[i] < 0) {        // medial wall: no brain area here
+      col[3 * i] = 0.11; col[3 * i + 1] = 0.11; col[3 * i + 2] = 0.13;
+      continue;
+    }
     let a = 0, d = 0, h = 0;
-    for (let k = 0; k < 3; k++) {
-      const r = vr[3 * i + k], w = vw[3 * i + k];
+    for (let k = 0; k < K; k++) {
+      const r = vr[K * i + k], w = vw ? vw[K * i + k] : 1;
       a += w * act[r]; d += w * dmg[r]; h += w * Math.abs(help[r]);
     }
     a /= 100; d /= 100; h /= 100;
@@ -217,6 +233,10 @@ function paint(v, f) {
     let R = 0.07 + 0.12 * pos + 0.10 * neg;
     let G = 0.09 + 0.80 * pos + 0.03 * neg;
     let B = 0.16 + 0.85 * pos + 0.30 * neg;
+    if (state.showFunctions) {          // tint each job's areas with its own colour
+      const fi = regionFunc[vr[K * i]];
+      if (fi >= 0) { const fc = FUNC_COLOR_BY_SIDE[v.side][fi]; R = 0.45 * R + 0.55 * fc[0]; G = 0.45 * G + 0.55 * fc[1]; B = 0.45 * B + 0.55 * fc[2]; }
+    }
     const dd = Math.min(1, Math.sqrt(d) * 1.1);   // even mild damage shows clearly
     R = R * (1 - dd) + 0.95 * dd; G = G * (1 - dd) + 0.06 * dd; B = B * (1 - dd) + 0.08 * dd;
     if (state.showHelp) {           // help that lands in damaged tissue
@@ -363,6 +383,21 @@ playBtn.onclick = () => {
 };
 document.getElementById('speed').onchange = e => state.speed = +e.target.value;
 document.getElementById('show-help').onchange = e => { state.showHelp = e.target.checked; redraw(); };
+// function legend: one chip per job, labelled with the hemisphere(s) that do it
+(() => {
+  const legend = document.getElementById('func-legend');
+  for (const [i, name] of FUNC_ORDER.entries()) {
+    const sides = ['left', 'right'].filter(s => D.functions[s].names.includes(name)).map(s => s[0].toUpperCase());
+    const [r, g, b] = FUNC_COLORS[i % FUNC_COLORS.length].map(x => Math.round(x * 255));
+    const s = document.createElement('span');
+    s.innerHTML = `<i style="background:rgb(${r},${g},${b})"></i>`;
+    s.append(`${name.replace(/_/g, ' ')} (${sides.join('+')})`);
+    legend.append(s);
+  }
+  document.getElementById('show-functions').onchange = e => {
+    state.showFunctions = e.target.checked; legend.hidden = !e.target.checked; redraw();
+  };
+})();
 document.querySelectorAll('.seg button').forEach(b => b.onclick = () => {
   state.cond = b.dataset.cond;
   document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-pressed', x === b));
@@ -386,11 +421,12 @@ function loop(now) {
   drawBridge(state.frame, dt);
   requestAnimationFrame(loop);
 }
-// Optional link settings, e.g. viewer.html#frame=150&cond=split&paused  (handy for screenshots)
+// Optional link settings, e.g. viewer.html#frame=150&cond=split&paused&functions  (handy for screenshots)
 const hash = new URLSearchParams(location.hash.slice(1));
 if (hash.has('frame')) state.frame = Math.max(0, Math.min(N - 1, +hash.get('frame') || 0));
 if (hash.get('cond') === 'split') document.querySelector('.seg button[data-cond="split"]').click();
 if (hash.has('paused')) { state.playing = false; playBtn.textContent = 'Play'; }
+if (hash.has('functions')) { const cb = document.getElementById('show-functions'); cb.checked = true; cb.onchange({ target: cb }); }
 redraw();
 requestAnimationFrame(loop);
 </script>
