@@ -62,22 +62,33 @@ def perturb(best: dict, k: int, rng: np.random.Generator, scale: float, identica
 
 
 def fit(W_l, W_r, C_l, C_r, targets: dict[str, np.ndarray], noise: np.ndarray, rng: np.random.Generator,
-        n_random: int = 160, n_refine: int = 80, batch: int = 40, identical: bool = False) -> dict:
-    """Random search, then a local search around the best setting. One fit per target FC."""
+        n_random: int = 160, n_refine: int = 80, batch: int = 40, identical: bool = False,
+        start: dict[str, dict] | None = None) -> dict:
+    """Random search, then two rounds of local search around the best setting. One fit per target.
+
+    `start` (per target) adds a known good setting as a candidate. Used to make nested comparisons
+    fair: separate left/right settings can always do at least as well as identical ones, so the
+    separate fit starts from the best identical answer."""
     out = {}
     for name, emp in targets.items():
         tried, scores = [], []
 
         def run(p):
-            for start in range(0, len(p["gain_l"]), batch):
-                sub = {k: v[start:start + batch] for k, v in p.items()}
+            for first in range(0, len(p["gain_l"]), batch):
+                sub = {k: np.asarray(v)[first:first + batch] for k, v in p.items()}
                 for i, fc in enumerate(rest_fc(W_l, W_r, C_l, C_r, sub, noise)):
                     tried.append({k: float(v[i]) for k, v in sub.items()})
                     scores.append(block_scores(fc, emp))
 
-        run(sample_params(n_random, rng, identical))
-        best = tried[int(np.argmax([s["score"] for s in scores]))]
-        run(perturb(best, n_refine, rng, 0.08, identical))
+        def best():
+            return tried[int(np.argmax([s["score"] for s in scores]))]
+
+        candidates = sample_params(n_random, rng, identical)
+        if start and name in start:
+            candidates = {k: np.append(v, start[name][k]) for k, v in candidates.items()}
+        run(candidates)
+        run(perturb(best(), n_refine // 2, rng, 0.08, identical))
+        run(perturb(best(), n_refine - n_refine // 2, rng, 0.03, identical))
         i = int(np.argmax([s["score"] for s in scores]))
         out[name] = {"params": tried[i], **scores[i], "n_tried": len(tried)}
     return out

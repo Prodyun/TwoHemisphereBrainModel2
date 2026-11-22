@@ -25,9 +25,13 @@ dynamics:
 
 # Each function = the Glasser areas it uses + how its input changes over time.
 # Area lists are chosen from the literature (see docs/architecture.md), not fitted to data.
+# Per-hemisphere settings below were FITTED to real resting-state fMRI (HCP group connectivity) with
+# scripts/fit_to_fmri.py (results/fit_20261122_000451). Note: separate left/right settings did not fit
+# the group data better than identical ones (held-out 0.256 vs 0.257), so the settings are only loosely
+# pinned down; what makes the hemispheres differ is mainly their real wiring and their jobs.
 left_hemisphere:
   specialization: "language · math/sequences"
-  dynamics: {}
+  dynamics: {leak: 0.539, gain: 0.890, noise: 0.143}
   functions:
     language:          # left-dominant: Broca's area (44, 45), Wernicke's region (STS, TPOJ1), 55b, SFL
       areas: [44, 45, 47l, IFSa, IFSp, 55b, SFL, PSL, STSda, STSdp, STSvp, TPOJ1, A5]
@@ -46,7 +50,7 @@ left_hemisphere:
 
 right_hemisphere:
   specialization: "spatial attention · faces · emotion in voice"
-  dynamics: {}
+  dynamics: {leak: 0.412, gain: 0.842, noise: 0.121}
   functions:
     spatial_attention: # right-dominant: frontal eye field + parietal attention areas + motion areas
       areas: [FEF, PEF, LIPv, LIPd, VIP, 7AL, 7PL, IPS1, MT, MST, V3A, PGp]
@@ -69,7 +73,7 @@ right_hemisphere:
 
 corpus_callosum:
   wiring: real           # real = measured left-right fibres; mirror = area i <-> area i only; both
-  strength: 0.5          # 0 = cut ("split brain"), 1 = strongest link
+  strength: 0.31         # 0 = cut ("split brain"), 1 = strongest link (fitted to resting fMRI)
   plasticity_rate: 0.02  # how fast the brain adapts to damage (0 = no adaptation)
   plasticity_gain: 1.5   # how much stronger links into damaged areas can get (1.5 = +150%)
   takeover_gain: 3.0     # how much more of the damaged side's task the healthy side can take on

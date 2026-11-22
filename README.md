@@ -1,33 +1,38 @@
 # Two-Hemisphere Brain Model
 
-A simulation of the brain as two distinct hemispheres (left and right), linked by a
-simulated corpus callosum. A disorder starts in one hemisphere and spreads. The project tests
-whether signals from the healthy hemisphere help the damaged one keep working, comparing a
-connected brain with a split brain. Results appear in a 3D viewer: two separate hemispheres
-on a black screen that you can rotate independently.
+A simulation of the brain as two distinct hemispheres (left and right), built on real Human
+Connectome Project (HCP) data and linked by a simulated corpus callosum. A disorder starts in one
+hemisphere and spreads. The project tests whether signals from the healthy hemisphere help the
+damaged one keep working, comparing a connected brain with a split brain (the control).
+Results appear in a 3D viewer: two separate hemispheres on a black screen that you can rotate
+independently.
+
+The two hemispheres are different models. Each has its own real wiring, its own settings and its
+own jobs: language and math/sequences on the left; spatial attention, faces and emotion in the voice
+on the right. Both also do vision and movement, each for the opposite side of the body. See
+[docs/architecture.md](docs/architecture.md).
 
 ## Project layout
 
 ```text
 TwoHemisphereBrainModel2/
 ├── src/brain_model/          # The model itself (importable Python package)
-│   ├── anatomy.py            #   hemisphere shape, 180 regions, wiring between them
-│   ├── hemispheres/          #   base.py (shared), left.py, right.py
+│   ├── anatomy.py            #   real-vs-stand-in brain, wiring helpers
+│   ├── hcp/                  #   real HCP data: download/prepare (enigma.py), load, fMRI
+│   ├── hemispheres/          #   base.py (shared + job patterns), left.py, right.py
 │   ├── connectivity/         #   corpus_callosum.py: link between hemispheres + plasticity
-│   ├── lesion.py             #   the disorder that starts in one region and spreads
-│   ├── simulation/           #   runner.py: runs the brain, the experiment and the scoring
+│   ├── lesion.py             #   the disorder: spreading or stroke
+│   ├── simulation/           #   runner.py (experiment), rest.py + fit.py (fMRI fit)
 │   ├── visualization/        #   the 3D viewer (black screen, two rotatable hemispheres)
-│   ├── utils/                #   config loading and helpers
+│   ├── utils/                #   config loading
 │   └── brain.py              #   puts hemispheres + callosum + lesion together
-├── configs/                  # YAML settings for each experiment (default.yaml)
-├── scripts/                  # Command-line entry points (run_simulation.py)
-├── experiments/              # Write-ups of individual experiments
-├── notebooks/                # Jupyter notebooks for exploration and plots
-├── tests/                    # Automated tests (pytest)
-├── data/raw/                 # Original input data (not committed to git)
-├── data/processed/           # Cleaned/derived data (not committed to git)
-├── results/                  # Simulation outputs, one folder per run (not committed)
-└── docs/                     # Design notes (architecture.md)
+├── configs/                  # hcp.yaml (real brain), default.yaml (hand-made stand-in)
+├── scripts/                  # command-line entry points (see below)
+├── experiments/              # write-ups of individual experiments
+├── tests/                    # automated tests (pytest)
+├── data/raw/, data/processed/  # downloaded and derived data (not committed to git)
+├── results/                  # simulation outputs, one folder per run (not committed)
+└── docs/                     # architecture.md, data.md, requirements.md
 ```
 
 ## Getting started (Windows / PowerShell)
@@ -37,25 +42,42 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 
+python scripts/fetch_enigma_data.py      # download the real brain (HCP group data, ~4 MB, no login)
+python scripts/prepare_hcp.py            # build data/processed/hcp_brain.npz
 pytest                                   # run the tests
-python scripts/run_simulation.py         # run the experiment and open the 3D viewer
+python scripts/run_simulation.py --config configs/hcp.yaml   # run the experiment, open the 3D viewer
 ```
 
 The script prints how well the damaged hemisphere still works with and without the corpus
-callosum. It then opens `results/<timestamp>/viewer.html` in your browser (an internet
-connection is needed the first time, to load the 3D library). In the viewer:
+callosum, overall and for each job. It then opens `results/<timestamp>/viewer.html` in your browser
+(an internet connection is needed the first time, to load the 3D library). In the viewer:
 
 - drag a hemisphere to rotate it, and scroll to zoom; each one moves on its own
 - **Connected brain / Split brain** switches between the test and the control
-- colors: blue = activity, red = damage, gold = signals arriving from the healthy side
-- add `#frame=150&paused` to the end of the address to open at a specific moment (useful for screenshots)
+- colors: blue = activity, red = damage, gold = signals arriving from the healthy side,
+  dark grey = the inner (medial) wall, which has no brain area
+- **Show functions** colours each job's brain areas
+- add `#frame=150&paused&functions` to the end of the address to open at a specific moment
+  (useful for screenshots)
 
-## Running an experiment
+## Full pipeline (for the results and poster)
 
-1. Copy `configs/default.yaml` to a new file, e.g. `configs/split_brain.yaml`, and change settings
-   (for example `lesion.hemisphere: right`, or `lesion.cross_spread: 0.5`).
-2. Run `python scripts/run_simulation.py --config configs/split_brain.yaml`.
+```powershell
+python scripts/select_subjects.py --csv data/raw/HCP_YA_subjects.csv   # pick 2 pilot subjects
+# download their resting fMRI (see docs/data.md), then:
+python scripts/process_fmri.py      # real fMRI -> connectivity per subject
+python scripts/fit_to_fmri.py       # fit left/right settings to real fMRI, with controls (~15 min)
+python scripts/run_batch.py         # all experiments x 20 seeds x 20 start areas (~10 min)
+python scripts/make_figures.py      # poster figures + results/figures_*/summary.md
+```
+
+## Running your own experiment
+
+1. Copy `configs/hcp.yaml` to a new file, e.g. `configs/stroke_right.yaml`, and change settings
+   (for example `lesion.hemisphere: right`, `lesion.region: R_FFC`, `lesion.type: stroke`, or
+   `corpus_callosum.wiring: mirror`).
+2. Run `python scripts/run_simulation.py --config configs/stroke_right.yaml`.
 3. Results are saved to `results/<timestamp>/`.
 4. Record what you tried and what you saw in `experiments/`.
 
-See [docs/architecture.md](docs/architecture.md) for how the model works.
+Data sources and citations: [docs/data.md](docs/data.md).

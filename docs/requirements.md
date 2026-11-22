@@ -15,17 +15,20 @@ What is this project for? (research, school/class project, demo, learning, paper
 ## 2. What should the LEFT hemisphere do?
 (e.g. language, reading text, logic, math, sequences, speech)
 
-> Language / logic / sequences (currently modelled as a sequential, front-to-back task).
+> Language and math/sequences (left-dominant), plus vision and movement for the right side of the
+> body. Each job drives its real Glasser areas (see `configs/hcp.yaml`).
 
 ## 3. What should the RIGHT hemisphere do?
 (e.g. images, shapes, spatial reasoning, faces, emotion, music, big-picture patterns)
 
-> Spatial / patterns / big picture (currently modelled as smooth whole-hemisphere waves).
+> Spatial attention, faces and emotion in the voice (prosody) (right-dominant), plus vision and
+> movement for the left side of the body.
 
 ## 4. How should the two hemispheres interact?
 (e.g. share everything, share a little, compete, one checks the other, "split-brain" experiments)
 
-> Distinct models that share some qualities. When one hemisphere is damaged, the healthy one
+> Distinct models that share some qualities: each has its own real wiring, settings and jobs, but the
+> same population equation. Never mirror copies of each other. When one hemisphere is damaged, the healthy one
 > sends signals across the corpus callosum to support it. Compare against a split brain
 > (callosum cut) as the control.
 
@@ -50,10 +53,13 @@ What is this project for? (research, school/class project, demo, learning, paper
 - Disorder in the left vs in the right hemisphere
 - Does the callosum also spread the disorder (`lesion.cross_spread`)? Trade-off: helping vs. spreading
 - With vs without plasticity (the brain adapting after damage)
+- Spreading disorder vs stroke (sudden damage that does not spread)
+- Real measured callosum fibres vs mirror-only links vs both
+- Which abilities (language, vision, ...) does the healthy side rescue?
 
 ## 8. Constraints
-- Deadline:
-- Computer (does it have a graphics card, GPU?):
+- Deadline: finish the build within 2-3 days of 2026-11-21
+- Computer (does it have a graphics card, GPU?): laptop, no GPU
 - Budget for paid AI services (if any):
 
 ## 9. Anything else / inspiration
@@ -61,4 +67,5 @@ What is this project for? (research, school/class project, demo, learning, paper
 
 > Data: Human Connectome Project Young Adult (HCP-YA), 3T Preprocessed Structural, Diffusion and
 > Resting-State fMRI, subjects with "Full 3T imaging protocol = True", no 7T data.
-> Start with a ~10-subject pilot (storage). Downloaded through BALSA.
+> Pilot: 2 subjects (resting fMRI only, to check the model). The wiring, atlas and brain shape come
+> from HCP group data via the ENIGMA Toolbox (no login). See docs/data.md.

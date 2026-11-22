@@ -301,6 +301,12 @@ def main() -> None:
         for t, r in fit["wiring_alone"].items():
             lines.append(f"| wiring alone (reference) | {t} | {r['score']:.3f} | {r['r_left']:.2f} | "
                          f"{r['r_right']:.2f} | {r['r_between']:.2f} |")
+        if fit.get("held_out"):
+            lines += ["\nHeld-out check (settings fitted to the group, re-run with new random noise):\n",
+                      "| Model | Target | Score |", "|---|---|---|"]
+            for model, per_target in fit["held_out"].items():
+                for t, r in per_target.items():
+                    lines.append(f"| {model} | {t} | {r['score']:.3f} |")
         for png in fit_dir.glob("*.png"):
             shutil.copy(png, out / f"6_{png.name}")
     (out / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")

@@ -70,18 +70,34 @@ def main() -> None:
     Ws_l, Ws_r = anatomy.row_normalize(sl), anatomy.row_normalize(sr)
     Cs_l, Cs_r = (None, None) if C_l is None else (anatomy.row_normalize(slr), anatomy.row_normalize(slr.T))
 
+    # Identical settings are fitted first; the separate-settings fit then starts from that answer,
+    # so "separate" can only match or beat "identical" (a fair nested comparison).
     models = {
-        "real wiring, separate L/R settings": (W_l, W_r, C_l, C_r, False),
-        "real wiring, identical L/R settings": (W_l, W_r, C_l, C_r, True),
-        "shuffled wiring, separate L/R settings": (Ws_l, Ws_r, Cs_l, Cs_r, False),
+        "real wiring, identical L/R settings": (W_l, W_r, C_l, C_r, True, None),
+        "real wiring, separate L/R settings": (W_l, W_r, C_l, C_r, False, "real wiring, identical L/R settings"),
+        "shuffled wiring, separate L/R settings": (Ws_l, Ws_r, Cs_l, Cs_r, False, None),
     }
     results = {}
-    for name, (wl, wr, cl, cr, identical) in models.items():
+    for name, (wl, wr, cl, cr, identical, start_from) in models.items():
         print(f"\n{name} ...")
-        results[name] = fit(wl, wr, cl, cr, targets, noise, rng, identical=identical, **sizes)
+        start = None
+        if start_from:
+            start = {t: r["params"] for t, r in results[start_from].items()}
+        results[name] = fit(wl, wr, cl, cr, targets, noise, rng, identical=identical, start=start, **sizes)
         for t, r in results[name].items():
             print(f"  {t:10s} score {r['score']:.3f}  (left {r['r_left']:.2f}, right {r['r_right']:.2f}, "
                   f"between {r['r_between']:.2f})")
+
+    # Held-out check: settings fitted to the group, re-run with NEW random noise, scored against
+    # every target. A real improvement should survive new noise (and carry over to the subjects).
+    fresh = np.random.default_rng(cfg["seed"] + 1000).normal(size=noise.shape)
+    held_out = {}
+    print("\nHeld-out check (group-fitted settings, new noise):")
+    for name, (wl, wr, cl, cr, *_rest) in models.items():
+        p = {k: np.array([v]) for k, v in results[name]["group"]["params"].items()}
+        fc = rest_fc(wl, wr, cl, cr, p, fresh)[0]
+        held_out[name] = {t: block_scores(fc, emp) for t, emp in targets.items()}
+        print(f"  {name:40s} " + "  ".join(f"{t}: {s['score']:.3f}" for t, s in held_out[name].items()))
 
     sc_full = np.block([[brain.sc_left, brain.sc_left_right], [brain.sc_left_right.T, brain.sc_right]])
     wiring_alone = {t: block_scores(sc_full, emp) for t, emp in targets.items()}
@@ -98,8 +114,8 @@ def main() -> None:
     out_dir = Path("results") / datetime.now().strftime("fit_%Y%m%d_%H%M%S")
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "fit.json").write_text(json.dumps(
-        {"wiring": wiring, "steps": args.steps, "models": results, "wiring_alone": wiring_alone,
-         "segregation": seg}, indent=2), encoding="utf-8")
+        {"wiring": wiring, "steps": args.steps, "models": results, "held_out": held_out,
+         "wiring_alone": wiring_alone, "segregation": seg}, indent=2), encoding="utf-8")
     make_figures(out_dir, results, wiring_alone, targets, best_fc, main_name)
 
     print("\nLeft vs right (Gotts et al. 2013: left more segregated, right more integrated):")

@@ -147,9 +147,12 @@ def test_functions_need_the_real_brain():
 
 
 def test_per_hemisphere_settings_override_shared_ones(fake_file):
-    brain = Brain(fake_config(fake_file, left_hemisphere={"dynamics": {"gain": 0.3, "noise": 0.01}}))
+    cfg = fake_config(fake_file, left_hemisphere={"dynamics": {"gain": 0.3, "noise": 0.01}},
+                      right_hemisphere={"dynamics": {}})
+    brain = Brain(cfg)
     assert brain.left.gain == 0.3 and brain.left.noise == 0.01
-    assert brain.right.gain == 0.5 and brain.right.noise == 0.05
+    shared = cfg["dynamics"]
+    assert brain.right.gain == shared["gain"] and brain.right.noise == shared["noise"]
 
 
 # ---------- callosum wiring ----------
