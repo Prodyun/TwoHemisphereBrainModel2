@@ -83,11 +83,16 @@ lesion:
   hemisphere: left       # left or right
   region: L_44           # where it starts: Broca's area
   type: spreading        # spreading (disease-like) or stroke (sudden, does not spread)
+  model: fisher_kpp      # how it spreads: fisher_kpp = travels along the real wiring as a front
+                         # (network Fisher-Kolmogorov, used for prion-like protein spread);
+                         # simple = the earlier rule (uses spread_rate)
   start_step: 120        # when the disorder appears
   initial_damage: 0.6    # damage at the starting area (0 = healthy, 1 = destroyed)
-  spread_rate: 0.004     # how fast damage spreads along connections each step. The real wiring is
-                         # denser than the stand-in's, so 0.004 damages about half the hemisphere by
-                         # the end (0.007 would destroy almost all of it)
+  transport: 0.002       # how much damage moves along each fibre per step (shorter fibres carry more)
+  growth: 0.0105         # how fast damage takes hold and grows inside an area once it arrives.
+                         # These two give ~45% average damage by the end; direct neighbours of the
+                         # start are reached around step 440, the next ring ~730, the next ~870
+  spread_rate: 0.004     # only used by model: simple
   max_damage: 0.98       # damaged areas keep a little function
   cross_spread: 0.0      # damage that leaks to the other hemisphere through the callosum
   stroke_neighbors: 4            # stroke only: how many strongly linked neighbours are also hit

@@ -52,13 +52,19 @@ The script prints how well the damaged hemisphere still works with and without t
 callosum, overall and for each job. It then opens `results/<timestamp>/viewer.html` in your browser
 (an internet connection is needed the first time, to load the 3D library). In the viewer:
 
-- drag a hemisphere to rotate it, and scroll to zoom; each one moves on its own
+- **Separate / Together** (top): two hemispheres you rotate on their own, or both in one scene
+  with the 150 strongest real callosal fibres drawn between them. Pulses run along each fibre in
+  the direction the signal travels: gold = into the damaged side, blue = the other way
+- drag to rotate, scroll to zoom; point at an area to see its name, its job, its damage and the
+  input it gets from the other side
 - **Connected brain / Split brain** switches between the test and the control
-- colors: blue = activity, red = damage, gold = signals arriving from the healthy side,
-  dark grey = the inner (medial) wall, which has no brain area
-- **Show functions** colours each job's brain areas
-- add `#frame=150&paused&functions` to the end of the address to open at a specific moment
-  (useful for screenshots)
+- **Colour by**: *Damage* (grey = healthy, yellow -> red -> dark red; an area flashes when the
+  disease first reaches it, and the connections carrying it glow orange), *Input from other side*
+  (gold = signals arriving, blue = signals being sent), or *Activity*
+- **Area outlines** shows the 180 areas the model is really made of; **Network view** shows them as
+  nodes with their strongest real connections; **Show functions** colours each job's areas
+- add `#frame=150&paused&view=together&color=input&network` to the end of the address to open at a
+  specific moment and setting (useful for screenshots)
 
 ## Full pipeline (for the results and poster)
 

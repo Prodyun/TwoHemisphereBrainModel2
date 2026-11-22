@@ -10,23 +10,24 @@
     --text: #d6deea;
     --muted: #7d8899;
     --line: #1c222c;
-    --panel: rgba(10, 13, 18, 0.72);
     --activity: #38e1ff;
     --damage: #e0303f;
+    --damage-low: #ffd84a;
     --help: #ffc03a;
-    --split: #8a93a3;
+    --send: #38c8ff;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
     font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
   body { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100vh; }
-  header { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline;
-    padding: 12px 16px 4px; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; padding: 10px 16px 4px; }
   h1 { font-size: 13px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; margin: 0; }
   .sub { color: var(--muted); font-size: 13px; }
-  main { display: grid; grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr); min-height: 0; }
-  .panel { position: relative; min-height: 0; overflow: hidden; }
+  main { position: relative; min-height: 0; }
+  .layout { position: absolute; inset: 0; }
+  #sep { display: grid; grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr); }
+  .panel { position: relative; min-height: 0; overflow: hidden; height: 100%; }
   .panel canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block;
     cursor: grab; touch-action: none; }
   .panel canvas:active { cursor: grabbing; }
@@ -34,6 +35,7 @@
   .tag b { display: block; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; }
   .tag span { color: var(--muted); font-size: 12px; }
   .tag .state { display: block; margin-top: 6px; font-variant-numeric: tabular-nums; color: var(--text); }
+  .tag.right { left: auto; right: 16px; text-align: right; top: 48px; }
   .panel button.reset { position: absolute; top: 10px; right: 12px; }
   .bridge { position: relative; }
   .bridge canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -52,18 +54,22 @@
   .seg button[aria-pressed="true"] { background: #1f2a3a; color: #fff; }
   input[type=range] { flex: 1; min-width: 120px; accent-color: var(--activity); }
   .time { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 110px; }
-  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12px; }
-  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px;
-    vertical-align: -1px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12px; align-items: center; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  .legend .ramp { width: 64px; height: 10px; border-radius: 2px; display: inline-block; vertical-align: -1px; margin: 0 6px; }
   label.chk { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); cursor: pointer; }
   .chart { position: relative; height: 150px; min-width: 0; }
   .chart canvas { width: 100%; height: 100%; display: block; }
   .hint { color: var(--muted); font-size: 12px; }
+  #tip { position: fixed; pointer-events: none; z-index: 5; background: rgba(8, 11, 16, 0.94);
+    border: 1px solid #2a3240; border-radius: 6px; padding: 6px 9px; font-size: 12px; line-height: 1.45;
+    max-width: 260px; }
+  #tip b { color: #fff; }
+  #tip .m { color: var(--muted); }
   @media (max-width: 760px) {
     body { height: auto; }
-    main { grid-template-columns: 1fr; }
-    .panel { height: 58vh; }
-    .bridge { height: 44px; }
+    main { height: 120vh; }
+    #sep { grid-template-columns: 1fr; grid-template-rows: 1fr 44px 1fr; }
     .bridge .cap { bottom: 2px; }
     footer { grid-template-columns: 1fr; }
   }
@@ -72,20 +78,33 @@
 <body>
 <header>
   <h1>Two-Hemisphere Brain Model</h1>
+  <div class="seg" role="group" aria-label="View">
+    <button data-view="separate" aria-pressed="true">Separate</button>
+    <button data-view="together" aria-pressed="false">Together</button>
+  </div>
   <span class="sub" id="subtitle"></span>
-  <span class="hint">Drag a hemisphere to rotate it · scroll or pinch to zoom</span>
+  <span class="hint">Drag to rotate · scroll to zoom · point at an area to see its name</span>
 </header>
 
 <main>
-  <section class="panel" id="panel-left" aria-label="Left hemisphere 3D view">
-    <div class="tag"><b>Left hemisphere</b><span id="spec-left"></span><span class="state" id="state-left"></span></div>
-    <button class="reset" data-side="left">Reset view</button>
-  </section>
-  <div class="bridge" aria-hidden="true"><canvas id="bridge"></canvas><div class="cap" id="bridge-cap">Corpus callosum</div></div>
-  <section class="panel" id="panel-right" aria-label="Right hemisphere 3D view">
-    <div class="tag"><b>Right hemisphere</b><span id="spec-right"></span><span class="state" id="state-right"></span></div>
-    <button class="reset" data-side="right">Reset view</button>
-  </section>
+  <div class="layout" id="sep">
+    <section class="panel" id="panel-left" aria-label="Left hemisphere 3D view">
+      <div class="tag"><b>Left hemisphere</b><span id="spec-left"></span><span class="state" id="state-left"></span></div>
+      <button class="reset" data-reset="left">Reset view</button>
+    </section>
+    <div class="bridge" aria-hidden="true"><canvas id="bridge"></canvas><div class="cap" id="bridge-cap">Corpus callosum</div></div>
+    <section class="panel" id="panel-right" aria-label="Right hemisphere 3D view">
+      <div class="tag"><b>Right hemisphere</b><span id="spec-right"></span><span class="state" id="state-right"></span></div>
+      <button class="reset" data-reset="right">Reset view</button>
+    </section>
+  </div>
+  <div class="layout" id="tog" hidden>
+    <section class="panel" id="panel-together" aria-label="Both hemispheres with the corpus callosum">
+      <div class="tag"><b>Both hemispheres</b><span id="tog-cap"></span>
+        <span class="state" id="tstate-left"></span><span class="state" id="tstate-right"></span></div>
+      <button class="reset" data-reset="together">Reset view</button>
+    </section>
+  </div>
 </main>
 
 <footer>
@@ -104,18 +123,25 @@
         <button data-cond="connected" aria-pressed="true">Connected brain</button>
         <button data-cond="split" aria-pressed="false">Split brain (callosum cut)</button>
       </div>
-      <label class="chk"><input type="checkbox" id="show-help" checked> Show help from other side</label>
+      <label class="chk">Colour by
+        <select id="color-by" aria-label="Colour by">
+          <option value="damage" selected>Damage</option>
+          <option value="input">Input from other side</option>
+          <option value="activity">Activity</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <label class="chk"><input type="checkbox" id="show-outlines" checked> Area outlines</label>
+      <label class="chk"><input type="checkbox" id="show-network"> Network view (180 areas + wiring)</label>
       <label class="chk"><input type="checkbox" id="show-functions"> Show functions</label>
     </div>
     <div class="legend" id="func-legend" hidden></div>
-    <div class="legend">
-      <span><i style="background:var(--activity)"></i>Activity</span>
-      <span><i style="background:var(--damage)"></i>Damage</span>
-      <span><i style="background:var(--help)"></i>Signals arriving from the healthy side</span>
-    </div>
+    <div class="legend" id="legend"></div>
   </div>
   <div class="chart"><canvas id="chart" aria-label="Function score chart"></canvas></div>
 </footer>
+<div id="tip" hidden></div>
 
 <script id="brain-data" type="application/json">__BRAIN_DATA__</script>
 <script type="importmap">
@@ -129,190 +155,406 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const D = JSON.parse(document.getElementById('brain-data').textContent);
-const M = D.meta, N = M.n_frames;
+const M = D.meta, N = M.n_frames, SC = M.scale;
 const damaged = M.damaged, healthySide = damaged === 'left' ? 'right' : 'left';
-const NICE = { language_logic: 'language · logic · sequences', spatial_holistic: 'spatial · patterns · big picture' };
-const state = { cond: 'connected', frame: 0, playing: true, speed: 1, showHelp: true, showFunctions: false, acc: 0 };
+const SIDES = ['left', 'right'];
+const FRIENDLY = { '44': "Broca's area", '45': "Broca's area", '55b': 'speech area 55b', 'V1': 'primary visual',
+  '4': 'primary motor', 'FFC': 'fusiform face complex', 'FEF': 'frontal eye field', 'MT': 'motion area MT' };
+const state = { cond: 'connected', frame: 0, playing: true, speed: 1, colorBy: 'damage', outlines: true,
+  network: false, showFunctions: false, view: 'separate', acc: 0 };
 
-document.getElementById('spec-left').textContent = NICE[D.specialization.left] || D.specialization.left;
-document.getElementById('spec-right').textContent = NICE[D.specialization.right] || D.specialization.right;
+const areaName = (side, r) => {
+  const names = D.mesh[side].names;
+  if (!names) return `region ${r + 1}`;
+  return names[r].replace(/^[LR]_/, '').replace(/_ROI$/, '');
+};
+const nice = (side, r) => { const a = areaName(side, r); return FRIENDLY[a] ? `${a} (${FRIENDLY[a]})` : a; };
+
+document.getElementById('spec-left').textContent = D.specialization.left;
+document.getElementById('spec-right').textContent = D.specialization.right;
 document.getElementById('subtitle').textContent = M.lesion_type === 'stroke'
-  ? `A stroke hits the ${damaged} hemisphere at step ${M.start_step}`
-  : `A disorder starts in the ${damaged} hemisphere at step ${M.start_step} and spreads`;
+  ? `A stroke hits ${nice(damaged, M.lesion_center)} (${damaged} hemisphere) at step ${M.start_step}`
+  : `A disorder starts in ${nice(damaged, M.lesion_center)} (${damaged} hemisphere) at step ${M.start_step} and spreads along the wiring`;
+document.getElementById('tog-cap').textContent =
+  `${D.callosal_links.length} strongest callosal fibres (${M.wiring} wiring) · gold = signals into the ${damaged} side`;
 
-// ---------- one independent 3D viewer per hemisphere ----------
-function makeViewer(side) {
-  const el = document.getElementById('panel-' + side);
+// when the disease first reaches each area (damage above 10%), per condition and side, for the arrival flash
+const ARRIVAL = {};
+for (const [cname, c] of Object.entries(D.conditions)) {
+  ARRIVAL[cname] = {};
+  for (const side of SIDES) {
+    const a = new Array(c[side + '_damage'][0].length).fill(Infinity);
+    c[side + '_damage'].forEach((row, f) => row.forEach((d, r) => { if (d > 0.1 * SC && a[r] === Infinity) a[r] = f; }));
+    ARRIVAL[cname][side] = a;
+  }
+}
+
+// ---------- colours ----------
+const FUNC_COLORS = [[0.95, 0.55, 0.20], [0.55, 0.85, 0.35], [0.75, 0.45, 0.95], [0.35, 0.70, 0.95],
+  [0.95, 0.85, 0.35], [0.95, 0.45, 0.65], [0.40, 0.90, 0.80], [0.85, 0.65, 0.45]];
+const FUNC_ORDER = [...new Set([...D.functions.left.names, ...D.functions.right.names])];
+const FUNC_COLOR = Object.fromEntries(SIDES.map(s => [s,
+  D.functions[s].names.map(n => FUNC_COLORS[FUNC_ORDER.indexOf(n) % FUNC_COLORS.length])]));
+const DAMAGE_STOPS = [[0, [1.0, 0.85, 0.29]], [0.35, [0.93, 0.33, 0.12]], [0.7, [0.80, 0.07, 0.10]], [1, [0.36, 0.02, 0.05]]];
+function damageColor(d) {               // linear: yellow (just reached) -> red -> dark red (destroyed)
+  for (let i = 1; i < DAMAGE_STOPS.length; i++) {
+    const [t1, c1] = DAMAGE_STOPS[i], [t0, c0] = DAMAGE_STOPS[i - 1];
+    if (d <= t1) { const u = (d - t0) / (t1 - t0); return c0.map((x, k) => x + (c1[k] - x) * u); }
+  }
+  return DAMAGE_STOPS[DAMAGE_STOPS.length - 1][1];
+}
+const clamp01 = x => Math.max(0, Math.min(1, x));
+
+// colour of every area (one RGB triple per area) for the current frame and colour mode
+function regionColors(side, f) {
+  const c = D.conditions[state.cond];
+  const act = c[side][f], dmg = c[side + '_damage'][f], into = c['into_' + side][f], out = c['out_' + side][f];
+  const arrival = ARRIVAL[state.cond][side], funcOf = D.functions[side].region;
+  const n = dmg.length, rgb = new Float32Array(3 * n);
+  for (let r = 0; r < n; r++) {
+    const d = dmg[r] / SC;
+    let R, G, B;
+    if (state.colorBy === 'damage') {
+      [R, G, B] = d < 0.02 ? [0.34, 0.36, 0.40] : damageColor(d);
+      const since = f - arrival[r];
+      if (since >= 0 && since < 8) { const k = 0.75 * (1 - since / 8); R += (1 - R) * k; G += (1 - G) * k; B += (0.9 - B) * k; }
+    } else if (state.colorBy === 'input') {
+      const g = clamp01(into[r] / M.max_into), s = clamp01(out[r] / M.max_out);
+      R = 0.10 + 0.95 * g + 0.10 * s; G = 0.11 + 0.70 * g + 0.55 * s; B = 0.14 + 0.10 * g + 0.75 * s;
+    } else {
+      const a = act[r] / SC, pos = Math.max(a, 0), neg = Math.max(-a, 0);
+      R = 0.07 + 0.12 * pos + 0.10 * neg; G = 0.09 + 0.80 * pos + 0.03 * neg; B = 0.16 + 0.85 * pos + 0.30 * neg;
+    }
+    if (state.colorBy !== 'damage' && d >= 0.02) {     // other modes: damaged areas dim, with a red tint
+      const k = 0.65 * d; R = R * (1 - k) + 0.45 * k; G *= 1 - k; B *= 1 - k;
+    }
+    if (state.showFunctions && funcOf[r] >= 0) {
+      const fc = FUNC_COLOR[side][funcOf[r]];
+      R = 0.45 * R + 0.55 * fc[0]; G = 0.45 * G + 0.55 * fc[1]; B = 0.45 * B + 0.55 * fc[2];
+    }
+    rgb[3 * r] = R; rgb[3 * r + 1] = G; rgb[3 * r + 2] = B;
+  }
+  return rgb;
+}
+
+// ---------- one hemisphere model (used in both views) ----------
+function bezier(a, b, lift, segs) {     // curve from a to b, bulging outward by `lift`
+  const mid = a.clone().add(b).multiplyScalar(0.5);
+  const ctrl = mid.clone().add(lift);
+  const pts = [];
+  for (let s = 0; s <= segs; s++) {
+    const t = s / segs, u = 1 - t;
+    pts.push(new THREE.Vector3(
+      u * u * a.x + 2 * u * t * ctrl.x + t * t * b.x,
+      u * u * a.y + 2 * u * t * ctrl.y + t * t * b.y,
+      u * u * a.z + 2 * u * t * ctrl.z + t * t * b.z));
+  }
+  return pts;
+}
+function textSprite(text) {
+  const cv = document.createElement('canvas'), ctx = cv.getContext('2d');
+  ctx.font = '600 44px system-ui, sans-serif';
+  cv.width = Math.ceil(ctx.measureText(text).width) + 28; cv.height = 64;
+  ctx.font = '600 44px system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.fillStyle = '#ff6b78'; ctx.textBaseline = 'middle'; ctx.fillText(text, 14, 33);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: false, transparent: true }));
+  sp.scale.set(0.0011 * cv.width, 0.0011 * cv.height, 1);
+  sp.renderOrder = 10;
+  return sp;
+}
+
+const HEMIS = [];   // every hemisphere model in every view, all repainted together
+function makeHemi(side, together) {
   const m = D.mesh[side];
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.setClearColor(0x000000, 1);
-  el.prepend(renderer.domElement);
-
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 50);
-  const home = new THREE.Vector3(side === 'left' ? -4.3 : 4.3, 1.0, 0.0);
-  scene.add(new THREE.HemisphereLight(0xc8d6ff, 0x050508, 0.55));
-  const key = new THREE.DirectionalLight(0xffffff, 1.9);
-  key.position.set(0.3, 1.4, 0.8);  // light from above-front, so the folds cast shading
-  camera.add(key);  // light follows the camera, so the side you look at is always lit
-  scene.add(camera);
-
+  const group = new THREE.Group();
+  if (together) group.position.set(m.offset[0] + (side === 'left' ? -0.02 : 0.02), m.offset[1], m.offset[2]);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(m.v, 3));
   geo.setIndex(m.f);
   geo.computeVertexNormals();
   const colors = new Float32Array(m.v.length);
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  scene.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0 })));
+  const surfaceMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0, transparent: true });
+  const surface = new THREE.Mesh(geo, surfaceMat);
+  group.add(surface);
 
-  // faint glow shell
-  const glow = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
-    color: 0x2a6cff, transparent: true, opacity: 0.07, side: THREE.BackSide, depthWrite: false }));
-  glow.scale.setScalar(1.04);
-  scene.add(glow);
+  // the 180 areas as nodes (one small sphere each)
+  const centers = m.centers.map(c => new THREE.Vector3(...c));
+  const nodes = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 10, 8), new THREE.MeshBasicMaterial(), centers.length);
+  nodes.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(3 * centers.length), 3);
+  group.add(nodes);
 
-  // marker where the disorder started
-  let marker = null;
-  if (side === damaged) {
-    const c = m.centers[M.lesion_center];
-    const p = new THREE.Vector3(c[0], c[1], c[2]);
-    marker = new THREE.Mesh(new THREE.SphereGeometry(0.025, 16, 12),
-      new THREE.MeshBasicMaterial({ color: 0xff4455 }));
-    marker.position.copy(p.multiplyScalar(1.03));
-    scene.add(marker);
+  // the strongest real connections between areas, as arcs (lit up when disease travels along them)
+  const SEG = 10, linkPts = [];
+  for (const [i, j] of m.links) {
+    const a = centers[i], b = centers[j];
+    const lift = a.clone().add(b).multiplyScalar(0.5).normalize().multiplyScalar(0.08 + 0.25 * a.distanceTo(b));
+    const p = bezier(a, b, lift, SEG);
+    for (let s = 0; s < SEG; s++) linkPts.push(p[s], p[s + 1]);
   }
+  const linkGeo = new THREE.BufferGeometry().setFromPoints(linkPts);
+  const linkColors = new Float32Array(3 * linkPts.length);
+  linkGeo.setAttribute('color', new THREE.BufferAttribute(linkColors, 3));
+  const links = new THREE.LineSegments(linkGeo, new THREE.LineBasicMaterial({
+    vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  group.add(links);
 
+  let marker = null;
+  if (side === damaged && M.lesion_center >= 0) {
+    marker = new THREE.Group();
+    const c = centers[M.lesion_center];
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.03, 16, 12), new THREE.MeshBasicMaterial({ color: 0xff4455 }));
+    ball.position.copy(c);
+    const label = textSprite(`start: ${nice(side, M.lesion_center)}`);
+    label.position.copy(c.clone().add(c.clone().normalize().multiplyScalar(0.12)));
+    marker.add(ball, label);
+    group.add(marker);
+  }
+  const borderSet = m.border ? new Uint8Array(m.vr.length / m.k) : null;
+  if (borderSet) for (const v of m.border) borderSet[v] = 1;
+  const h = { side, m, group, geo, colors, surface, nodes, centers, links, linkColors, SEG, marker, borderSet };
+  HEMIS.push(h);
+  return h;
+}
+
+const _mat = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _col = new THREE.Color();
+function paintHemi(h, f, rgb, dmg) {
+  const { m, colors, borderSet } = h, K = m.k, vr = m.vr, vw = m.vw, n = vr.length / K;
+  const dark = state.outlines && borderSet;
+  for (let i = 0; i < n; i++) {
+    if (K === 1 && vr[i] < 0) { colors[3 * i] = 0.07; colors[3 * i + 1] = 0.07; colors[3 * i + 2] = 0.08; continue; }
+    let R = 0, G = 0, B = 0;
+    for (let k = 0; k < K; k++) {
+      const r = vr[K * i + k], w = vw ? vw[K * i + k] : 1;
+      R += w * rgb[3 * r]; G += w * rgb[3 * r + 1]; B += w * rgb[3 * r + 2];
+    }
+    if (dark && borderSet[i]) { R *= 0.55; G *= 0.55; B *= 0.55; }
+    colors[3 * i] = R; colors[3 * i + 1] = G; colors[3 * i + 2] = B;
+  }
+  h.geo.attributes.color.needsUpdate = true;
+  h.surface.material.opacity = state.network ? 0.16 : 1;
+  h.surface.material.depthWrite = !state.network;
+
+  // nodes: colour of their area, bigger when damaged; much bigger in network view
+  const base = state.network ? 0.016 : 0.007;
+  for (let r = 0; r < h.centers.length; r++) {
+    const d = dmg[r] / SC;
+    _s.setScalar(base * (1 + 1.4 * d));
+    _mat.compose(h.centers[r], _q, _s);
+    h.nodes.setMatrixAt(r, _mat);
+    _col.setRGB(Math.min(1, rgb[3 * r] * 1.25 + 0.05), Math.min(1, rgb[3 * r + 1] * 1.25 + 0.05), Math.min(1, rgb[3 * r + 2] * 1.25 + 0.05));
+    h.nodes.setColorAt(r, _col);
+  }
+  h.nodes.instanceMatrix.needsUpdate = true; h.nodes.instanceColor.needsUpdate = true;
+  h.nodes.visible = state.network || state.colorBy === 'damage' || state.outlines;
+
+  // connections: in damage mode, light up where the disease is flowing (big damage difference
+  // between two connected areas); in network view, also show every drawn connection faintly
+  const lc = h.linkColors, seg = h.SEG, w = m.link_w;
+  let any = false;
+  for (let l = 0; l < m.links.length; l++) {
+    const [i, j] = m.links[l];
+    const flow = state.colorBy === 'damage' ? clamp01(Math.abs(dmg[i] - dmg[j]) / SC * w[l] * 25 - 0.05) : 0;
+    const faint = state.network ? 0.16 : 0;
+    const R = faint + 1.0 * flow, G = faint + 0.45 * flow, B = faint + 0.12 * flow;
+    if (R > 0.01) any = true;
+    for (let s = 0; s < 2 * seg; s++) { const o = 3 * (2 * seg * l + s); lc[o] = R; lc[o + 1] = G; lc[o + 2] = B; }
+  }
+  h.links.geometry.attributes.color.needsUpdate = true;
+  h.links.visible = any;
+  if (h.marker) h.marker.visible = f * M.stride >= M.start_step;
+}
+
+// ---------- Separate view: one renderer + camera per hemisphere ----------
+function makeView(el, homePos, scene) {
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setClearColor(0x000000, 1);
+  el.prepend(renderer.domElement);
+  const camera = new THREE.PerspectiveCamera(32, 1, 0.05, 60);
+  scene.add(new THREE.HemisphereLight(0xc8d6ff, 0x050508, 0.6));
+  const key = new THREE.DirectionalLight(0xffffff, 1.8);
+  key.position.set(0.3, 1.4, 0.8);
+  camera.add(key);
+  scene.add(camera);
   const controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.enablePan = false;
-  controls.minDistance = 1.5;
-  controls.maxDistance = 7;
-  const reset = () => { camera.position.copy(home); camera.up.set(0, 1, 0); controls.target.set(0, 0, 0); controls.update(); };
+  controls.enableDamping = true; controls.enablePan = false; controls.minDistance = 0.8; controls.maxDistance = 9;
+  const reset = () => { camera.position.copy(homePos); camera.up.set(0, 1, 0); controls.target.set(0, 0, 0); controls.update(); };
   reset();
-
   const resize = () => {
     const w = el.clientWidth, h = el.clientHeight;
     if (!w || !h) return;
-    renderer.setSize(w, h, false);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
   };
   new ResizeObserver(resize).observe(el);
   resize();
-  return { side, m, geo, colors, renderer, scene, camera, controls, reset, marker };
+  return { el, renderer, scene, camera, controls, reset };
 }
 
-const viewers = { left: makeViewer('left'), right: makeViewer('right') };
-document.querySelectorAll('button.reset').forEach(b => b.onclick = () => viewers[b.dataset.side].reset());
+const VIEWS = {};
+for (const side of SIDES) {
+  const scene = new THREE.Scene();
+  const hemi = makeHemi(side, false);
+  scene.add(hemi.group);
+  VIEWS[side] = { ...makeView(document.getElementById('panel-' + side),
+    new THREE.Vector3(side === 'left' ? -4.3 : 4.3, 1.0, 0.0), scene), hemis: [hemi] };
+}
 
-// colours for the "show functions" overlay (one per job of a hemisphere)
-const FUNC_COLORS = [[0.95, 0.55, 0.20], [0.55, 0.85, 0.35], [0.75, 0.45, 0.95], [0.35, 0.70, 0.95],
-  [0.95, 0.85, 0.35], [0.95, 0.45, 0.65], [0.40, 0.90, 0.80], [0.85, 0.65, 0.45]];
-// the same job (e.g. vision, done by both sides) gets the same colour in both hemispheres
-const FUNC_ORDER = [...new Set([...D.functions.left.names, ...D.functions.right.names])];
-const funcColor = side => D.functions[side].names.map(n => FUNC_COLORS[FUNC_ORDER.indexOf(n) % FUNC_COLORS.length]);
-const FUNC_COLOR_BY_SIDE = { left: funcColor('left'), right: funcColor('right') };
-function paint(v, f) {
-  const c = D.conditions[state.cond];
-  const act = c[v.side][f], dmg = c[v.side + '_damage'][f], help = c['into_' + v.side][f];
-  const K = v.m.k, vr = v.m.vr, vw = v.m.vw, col = v.colors, n = vr.length / K;
-  const regionFunc = D.functions[v.side].region;
-  for (let i = 0; i < n; i++) {
-    if (K === 1 && vr[i] < 0) {        // medial wall: no brain area here
-      col[3 * i] = 0.11; col[3 * i + 1] = 0.11; col[3 * i + 2] = 0.13;
-      continue;
-    }
-    let a = 0, d = 0, h = 0;
-    for (let k = 0; k < K; k++) {
-      const r = vr[K * i + k], w = vw ? vw[K * i + k] : 1;
-      a += w * act[r]; d += w * dmg[r]; h += w * Math.abs(help[r]);
-    }
-    a /= 100; d /= 100; h /= 100;
-    const pos = Math.max(a, 0), neg = Math.max(-a, 0);
-    let R = 0.07 + 0.12 * pos + 0.10 * neg;
-    let G = 0.09 + 0.80 * pos + 0.03 * neg;
-    let B = 0.16 + 0.85 * pos + 0.30 * neg;
-    if (state.showFunctions) {          // tint each job's areas with its own colour
-      const fi = regionFunc[vr[K * i]];
-      if (fi >= 0) { const fc = FUNC_COLOR_BY_SIDE[v.side][fi]; R = 0.45 * R + 0.55 * fc[0]; G = 0.45 * G + 0.55 * fc[1]; B = 0.45 * B + 0.55 * fc[2]; }
-    }
-    const dd = Math.min(1, Math.sqrt(d) * 1.1);   // even mild damage shows clearly
-    R = R * (1 - dd) + 0.95 * dd; G = G * (1 - dd) + 0.06 * dd; B = B * (1 - dd) + 0.08 * dd;
-    if (state.showHelp) {           // help that lands in damaged tissue
-      const g = Math.min(1, 2.2 * h * d);
-      R += 1.0 * g; G += 0.68 * g; B += 0.12 * g;
-    }
-    col[3 * i] = R; col[3 * i + 1] = G; col[3 * i + 2] = B;
+// ---------- Together view: both hemispheres + the corpus callosum fibres ----------
+const togScene = new THREE.Scene();
+const togHemis = Object.fromEntries(SIDES.map(s => [s, makeHemi(s, true)]));
+SIDES.forEach(s => togScene.add(togHemis[s].group));
+VIEWS.together = { ...makeView(document.getElementById('panel-together'), new THREE.Vector3(0, 2.75, 1.3), togScene),
+  hemis: [togHemis.left, togHemis.right] };
+
+const CC = D.callosal_links, CC_SEG = 24;
+const ccCurves = CC.map(([li, rj]) => {
+  const a = togHemis.left.centers[li].clone().add(togHemis.left.group.position);
+  const b = togHemis.right.centers[rj].clone().add(togHemis.right.group.position);
+  // fibres run toward the midline and arch over the top of the brain between the two areas
+  const lift = new THREE.Vector3(0, 0.12 + 0.35 * Math.abs(a.x - b.x), 0);
+  return bezier(a, b, lift, CC_SEG);
+});
+const ccLinePts = [];
+ccCurves.forEach(p => { for (let s = 0; s < CC_SEG; s++) ccLinePts.push(p[s], p[s + 1]); });
+const ccGeo = new THREE.BufferGeometry().setFromPoints(ccLinePts);
+const ccColors = new Float32Array(3 * ccLinePts.length);
+ccGeo.setAttribute('color', new THREE.BufferAttribute(ccColors, 3));
+togScene.add(new THREE.LineSegments(ccGeo, new THREE.LineBasicMaterial({
+  vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+// pulses: 2 per direction per fibre; they travel in the direction the signal goes
+const PULSES = [];
+CC.forEach((_, l) => { for (const dir of ['r2l', 'l2r']) for (let k = 0; k < 2; k++) PULSES.push({ l, dir, t: (k + Math.random()) / 2 }); });
+const pulseGeo = new THREE.BufferGeometry();
+const pulsePos = new Float32Array(3 * PULSES.length), pulseCol = new Float32Array(3 * PULSES.length);
+pulseGeo.setAttribute('position', new THREE.BufferAttribute(pulsePos, 3));
+pulseGeo.setAttribute('color', new THREE.BufferAttribute(pulseCol, 3));
+const dot = (() => {   // round, soft-edged pulse instead of a square
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const g = cv.getContext('2d'), grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(0.45, 'rgba(255,255,255,0.8)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(cv);
+})();
+const pulsePoints = new THREE.Points(pulseGeo, new THREE.PointsMaterial({
+  size: 0.07, map: dot, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+togScene.add(pulsePoints);
+const towardDamaged = damaged === 'left' ? 'r2l' : 'l2r';
+const GOLD = [1.0, 0.75, 0.23], CYAN = [0.22, 0.88, 1.0];
+
+function paintCallosum(f) {
+  const c = D.conditions[state.cond], cut = state.cond === 'split' || M.strength === 0;
+  for (let l = 0; l < CC.length; l++) {
+    const s = cut ? 0 : clamp01(Math.max(c.r2l[f][l], c.l2r[f][l]) / M.max_flux);
+    const [R, G, B] = cut ? [0.28, 0.04, 0.05] : [0.05 + 0.30 * s, 0.045 + 0.22 * s, 0.03 + 0.06 * s];
+    for (let k = 0; k < 2 * CC_SEG; k++) { const o = 3 * (2 * CC_SEG * l + k); ccColors[o] = R; ccColors[o + 1] = G; ccColors[o + 2] = B; }
   }
-  v.geo.attributes.color.needsUpdate = true;
-  if (v.marker) v.marker.visible = f * M.stride >= M.start_step;
+  ccGeo.attributes.color.needsUpdate = true;
+  pulsePoints.visible = !cut;
+}
+function movePulses(dt) {
+  const c = D.conditions[state.cond], f = state.frame;
+  if (!pulsePoints.visible) return;
+  const pace = state.playing ? state.speed : 0.25;
+  PULSES.forEach((p, k) => {
+    const s = clamp01(c[p.dir][f][p.l] / M.max_flux);
+    p.t += dt * (0.15 + 0.9 * s) * pace;
+    p.t = Number.isFinite(p.t) ? p.t % 1 : Math.random();
+    const pts = ccCurves[p.l], u = p.dir === 'l2r' ? p.t : 1 - p.t;   // l2r runs left -> right
+    const x = u * CC_SEG, i = Math.min(CC_SEG - 1, Math.floor(x)), fr = x - i;
+    const a = pts[i], b = pts[i + 1];
+    pulsePos[3 * k] = a.x + (b.x - a.x) * fr; pulsePos[3 * k + 1] = a.y + (b.y - a.y) * fr; pulsePos[3 * k + 2] = a.z + (b.z - a.z) * fr;
+    const col = p.dir === towardDamaged ? GOLD : CYAN, bright = s < 0.04 ? 0 : 0.25 + 0.75 * s;
+    pulseCol[3 * k] = col[0] * bright; pulseCol[3 * k + 1] = col[1] * bright; pulseCol[3 * k + 2] = col[2] * bright;
+  });
+  pulseGeo.attributes.position.needsUpdate = true; pulseGeo.attributes.color.needsUpdate = true;
 }
 
-// ---------- readouts ----------
+document.querySelectorAll('button.reset').forEach(b => b.onclick = () => VIEWS[b.dataset.reset].reset());
+
+// ---------- hover: which area is under the pointer ----------
+const tip = document.getElementById('tip'), ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
 const pct = x => (x == null ? '–' : Math.round(x * 100) + '%');
+for (const [vname, view] of Object.entries(VIEWS)) {
+  const cv = view.renderer.domElement;
+  cv.addEventListener('pointermove', e => {
+    const r = cv.getBoundingClientRect();
+    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, view.camera);
+    const hits = ray.intersectObjects(view.hemis.map(h => h.surface), false);
+    if (!hits.length) { tip.hidden = true; return; }
+    const hemi = view.hemis.find(h => h.surface === hits[0].object), m = hemi.m;
+    const v = hits[0].face.a, reg = m.vr[m.k * v];
+    const c = D.conditions[state.cond], f = state.frame, side = hemi.side;
+    if (reg < 0) { tip.innerHTML = '<b>Medial wall</b><br><span class="m">where the hemispheres join; no cortical area</span>'; }
+    else {
+      const fi = D.functions[side].region[reg];
+      const job = fi >= 0 ? D.functions[side].names[fi].replace(/_/g, ' ') : 'no assigned job';
+      tip.innerHTML = `<b>${nice(side, reg)}</b> <span class="m">${side} hemisphere · ${job}</span><br>` +
+        `damage ${pct(c[side + '_damage'][f][reg] / SC)} · activity ${(c[side][f][reg] / SC).toFixed(2)}<br>` +
+        `input from other side ${(c['into_' + side][f][reg] / SC).toFixed(3)} · sending ${(c['out_' + side][f][reg] / SC).toFixed(3)}`;
+    }
+    tip.hidden = false;
+    tip.style.left = Math.min(innerWidth - 270, e.clientX + 14) + 'px';
+    tip.style.top = (e.clientY + 14) + 'px';
+  });
+  cv.addEventListener('pointerleave', () => tip.hidden = true);
+}
+
+// ---------- readouts, legend ----------
 function mean(a) { let s = 0; for (const x of a) s += x; return s / a.length; }
 function updateText(f) {
   const c = D.conditions[state.cond];
-  for (const side of ['left', 'right']) {
-    const dm = mean(c[side + '_damage'][f]) / 100;
-    const sc = c['score_' + side][f];
-    document.getElementById('state-' + side).textContent =
-      `Damage ${pct(dm)} · Function ${pct(sc)}`;
+  for (const side of SIDES) {
+    const t = `Damage ${pct(mean(c[side + '_damage'][f]) / SC)} · Function ${pct(c['score_' + side][f])}` +
+      ` · areas reached ${c[side + '_damage'][f].filter(d => d > 0.1 * SC).length}/${c[side + '_damage'][f].length}`;
+    document.getElementById('state-' + side).textContent = t;
+    document.getElementById('tstate-' + side).textContent = `${side[0].toUpperCase() + side.slice(1)}: ${t}`;
   }
   document.getElementById('time').textContent = `Step ${f * M.stride} / ${M.steps}`;
   document.getElementById('slider').value = f;
 }
+function updateLegend() {
+  const L = document.getElementById('legend');
+  const ramp = `linear-gradient(90deg, ${DAMAGE_STOPS.map(([t, c]) => `rgb(${c.map(x => Math.round(255 * x))}) ${t * 100}%`).join(',')})`;
+  const parts = {
+    damage: `<span><i style="background:#575c66"></i>Healthy</span><span>Damage<span class="ramp" style="background:${ramp}"></span>(2% → 100%)</span>` +
+      `<span><i style="background:#fff3d0"></i>Just reached</span><span><i style="background:#ff7a1f"></i>Wiring carrying the disease</span>`,
+    input: `<span><i style="background:var(--help)"></i>Signals arriving from the other side</span><span><i style="background:var(--send)"></i>Sending to the other side</span><span><i style="background:#6b1a1f"></i>Damaged (dimmed)</span>`,
+    activity: `<span><i style="background:var(--activity)"></i>Activity</span><span><i style="background:#6b1a1f"></i>Damaged (dimmed)</span>`,
+  };
+  L.innerHTML = parts[state.colorBy] + (state.view === 'together'
+    ? `<span><i style="background:var(--help)"></i>Pulse into the ${damaged} side</span><span><i style="background:var(--activity)"></i>Pulse into the ${healthySide} side</span>` : '');
+}
 
-// ---------- corpus callosum strip: particles flow toward the damaged side ----------
+// ---------- corpus callosum strip (Separate view) ----------
 const bridge = document.getElementById('bridge'), bctx = bridge.getContext('2d');
 const particles = Array.from({ length: 70 }, () => ({ t: Math.random(), y: Math.random(), dir: Math.random() < 0.5 ? 1 : -1 }));
-const maxHelp = (() => {
-  const c = D.conditions.connected; let mx = 1e-6;
-  for (let f = 0; f < N; f++) mx = Math.max(mx, helpAmount(c, f));
-  return mx;
-})();
-function helpAmount(c, f) {  // help landing in damaged tissue, averaged over regions
-  const h = c['into_' + damaged][f], d = c[damaged + '_damage'][f];
-  let s = 0; for (let i = 0; i < h.length; i++) s += Math.abs(h[i]) * d[i];
-  return s / h.length / 1e4;
-}
+function helpAmount(c, f) { return mean(c['into_' + damaged][f]) / SC; }
+const maxHelp = (() => { let mx = 1e-6; const c = D.conditions.connected; for (let f = 0; f < N; f++) mx = Math.max(mx, helpAmount(c, f)); return mx; })();
 function drawBridge(f, dt) {
   const w = bridge.clientWidth, h = bridge.clientHeight, dpr = Math.min(devicePixelRatio, 2);
-  if (bridge.width !== Math.round(w * dpr) || bridge.height !== Math.round(h * dpr)) {
-    bridge.width = Math.round(w * dpr); bridge.height = Math.round(h * dpr);
-  }
-  bctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  bctx.clearRect(0, 0, w, h);
-  const vertical = w < h;              // side-by-side layout: particles move left/right
-  const len = vertical ? w : h, span = vertical ? h : w;
+  if (!w || !h) return;
+  if (bridge.width !== Math.round(w * dpr) || bridge.height !== Math.round(h * dpr)) { bridge.width = Math.round(w * dpr); bridge.height = Math.round(h * dpr); }
+  bctx.setTransform(dpr, 0, 0, dpr, 0, 0); bctx.clearRect(0, 0, w, h);
+  const vertical = w < h, len = vertical ? w : h, span = vertical ? h : w;
   const cap = document.getElementById('bridge-cap');
   if (state.cond === 'split') {
-    bctx.strokeStyle = '#e0303f'; bctx.setLineDash([6, 6]); bctx.lineWidth = 1.5;
-    bctx.beginPath();
+    bctx.strokeStyle = '#e0303f'; bctx.setLineDash([6, 6]); bctx.lineWidth = 1.5; bctx.beginPath();
     if (vertical) { bctx.moveTo(w / 2, 16); bctx.lineTo(w / 2, h - 28); } else { bctx.moveTo(16, h / 2); bctx.lineTo(w - 16, h / 2); }
-    bctx.stroke(); bctx.setLineDash([]);
-    cap.textContent = 'Callosum cut';
-    return;
+    bctx.stroke(); bctx.setLineDash([]); cap.textContent = 'Callosum cut'; return;
   }
   cap.textContent = 'Corpus callosum';
-  const help = helpAmount(D.conditions.connected, f) / maxHelp;   // 0..1
-  const towardDamaged = damaged === 'left' ? -1 : 1;
+  const help = helpAmount(D.conditions.connected, f) / maxHelp, toward = damaged === 'left' ? -1 : 1;
   for (const p of particles) {
-    const isHelp = p.dir === towardDamaged;
-    const speed = isHelp ? 0.35 + 0.9 * help : 0.35;
+    const isHelp = p.dir === toward, speed = isHelp ? 0.35 + 0.9 * help : 0.35;
     p.t += dt * speed * state.speed * (state.playing ? 1 : 0.15);
     if (p.t > 1) { p.t -= 1; p.y = Math.random(); }
-    const along = p.dir > 0 ? p.t : 1 - p.t;
-    const x = along * len, y = 16 + p.y * (span - 44);
-    const a = Math.sin(Math.PI * p.t);
-    bctx.fillStyle = isHelp
-      ? `rgba(255,192,58,${(0.25 + 0.75 * help) * a})`
-      : `rgba(56,225,255,${0.35 * a})`;
+    const along = p.dir > 0 ? p.t : 1 - p.t, x = along * len, y = 16 + p.y * (span - 44), a = Math.sin(Math.PI * p.t);
+    bctx.fillStyle = isHelp ? `rgba(255,192,58,${(0.25 + 0.75 * help) * a})` : `rgba(56,225,255,${0.35 * a})`;
     const r = isHelp ? 1.4 + 1.8 * help : 1.3;
-    bctx.beginPath();
-    if (vertical) bctx.arc(x, y, r, 0, 6.283); else bctx.arc(y, x, r, 0, 6.283);
-    bctx.fill();
+    bctx.beginPath(); if (vertical) bctx.arc(x, y, r, 0, 6.283); else bctx.arc(y, x, r, 0, 6.283); bctx.fill();
   }
 }
 
@@ -320,114 +562,120 @@ function drawBridge(f, dt) {
 const chart = document.getElementById('chart'), cctx = chart.getContext('2d');
 function drawChart(f) {
   const w = chart.clientWidth, h = chart.clientHeight, dpr = Math.min(devicePixelRatio, 2);
-  if (chart.width !== Math.round(w * dpr) || chart.height !== Math.round(h * dpr)) {
-    chart.width = Math.round(w * dpr); chart.height = Math.round(h * dpr);
-  }
+  if (!w || !h) return;
+  if (chart.width !== Math.round(w * dpr) || chart.height !== Math.round(h * dpr)) { chart.width = Math.round(w * dpr); chart.height = Math.round(h * dpr); }
   const ctx = cctx; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
   const L = 40, R = 12, T = 22, B = 20, pw = w - L - R, ph = h - T - B, ymax = 1.2;
   const X = i => L + (i / (N - 1)) * pw, Y = v => T + ph - (Math.min(v, ymax) / ymax) * ph;
   ctx.font = '11px system-ui, sans-serif'; ctx.textBaseline = 'middle';
-  // grid
   for (const v of [0, 0.5, 1]) {
     ctx.strokeStyle = '#1c222c'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(L, Y(v)); ctx.lineTo(L + pw, Y(v)); ctx.stroke();
     ctx.fillStyle = '#7d8899'; ctx.textAlign = 'right'; ctx.fillText(Math.round(v * 100) + '%', L - 6, Y(v));
   }
-  // damage area (current condition)
   const c = D.conditions[state.cond];
   ctx.fillStyle = 'rgba(224,48,63,0.18)'; ctx.beginPath(); ctx.moveTo(X(0), Y(0));
-  for (let i = 0; i < N; i++) ctx.lineTo(X(i), Y(mean(c[damaged + '_damage'][i]) / 100));
+  for (let i = 0; i < N; i++) ctx.lineTo(X(i), Y(mean(c[damaged + '_damage'][i]) / SC));
   ctx.lineTo(X(N - 1), Y(0)); ctx.closePath(); ctx.fill();
-  // lines
-  const series = [['split', '#8a93a3'], ['connected', '#38e1ff']];
-  for (const [name, color] of series) {
+  for (const [name, color] of [['split', '#8a93a3'], ['connected', '#38e1ff']]) {
     const s = D.conditions[name]['score_' + damaged];
-    ctx.strokeStyle = color; ctx.lineWidth = name === state.cond ? 2.2 : 1.2;
-    ctx.globalAlpha = name === state.cond ? 1 : 0.55;
+    ctx.strokeStyle = color; ctx.lineWidth = name === state.cond ? 2.2 : 1.2; ctx.globalAlpha = name === state.cond ? 1 : 0.55;
     ctx.beginPath(); let started = false;
     for (let i = 0; i < N; i++) { if (s[i] == null) continue; started ? ctx.lineTo(X(i), Y(s[i])) : ctx.moveTo(X(i), Y(s[i])); started = true; }
     ctx.stroke(); ctx.globalAlpha = 1;
   }
-  // cursor
-  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(X(f), T); ctx.lineTo(X(f), T + ph); ctx.stroke();
-  // title + key
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(X(f), T); ctx.lineTo(X(f), T + ph); ctx.stroke();
   ctx.textAlign = 'left'; ctx.fillStyle = '#d6deea';
   ctx.fillText(`${damaged[0].toUpperCase() + damaged.slice(1)} hemisphere function (vs. healthy)`, L, 9);
-  const keys = [['Connected', '#38e1ff'], ['Split brain', '#8a93a3'], ['Damage', 'rgba(224,48,63,0.6)']];
   let kx = L + pw; ctx.textAlign = 'right';
-  for (const [label, color] of keys.reverse()) {
+  for (const [label, color] of [['Damage', 'rgba(224,48,63,0.6)'], ['Split brain', '#8a93a3'], ['Connected', '#38e1ff']]) {
     ctx.fillStyle = '#7d8899'; ctx.fillText(label, kx, 9); const tw = ctx.measureText(label).width;
     ctx.fillStyle = color; ctx.fillRect(kx - tw - 14, 5, 9, 9); kx -= tw + 28;
   }
   ctx.fillStyle = '#7d8899'; ctx.textAlign = 'left'; ctx.fillText('time →', L, h - 8);
 }
 chart.addEventListener('pointerdown', e => {
-  const r = chart.getBoundingClientRect(), L = 40, pw = r.width - 52;
-  setFrame(Math.round(Math.max(0, Math.min(1, (e.clientX - r.left - L) / pw)) * (N - 1)));
+  const r = chart.getBoundingClientRect(), pw = r.width - 52;
+  setFrame(Math.round(clamp01((e.clientX - r.left - 40) / pw) * (N - 1)));
 });
 
 // ---------- controls ----------
 const slider = document.getElementById('slider'); slider.max = N - 1;
 function setFrame(f) { state.frame = f; state.acc = 0; redraw(); }
 function redraw() {
-  paint(viewers.left, state.frame); paint(viewers.right, state.frame);
-  updateText(state.frame); drawChart(state.frame);
+  const f = state.frame, c = D.conditions[state.cond];
+  for (const side of SIDES) {
+    const rgb = regionColors(side, f), dmg = c[side + '_damage'][f];
+    for (const h of HEMIS) if (h.side === side) paintHemi(h, f, rgb, dmg);
+  }
+  paintCallosum(f);
+  updateText(f); drawChart(f);
 }
 slider.oninput = () => setFrame(+slider.value);
 const playBtn = document.getElementById('play');
-playBtn.onclick = () => {
-  state.playing = !state.playing;
-  if (state.playing && state.frame >= N - 1) setFrame(0);
-  playBtn.textContent = state.playing ? 'Pause' : 'Play';
-  playBtn.setAttribute('aria-label', playBtn.textContent);
-};
+const setPlaying = on => { state.playing = on; playBtn.textContent = on ? 'Pause' : 'Play'; playBtn.setAttribute('aria-label', playBtn.textContent); };
+playBtn.onclick = () => { if (!state.playing && state.frame >= N - 1) setFrame(0); setPlaying(!state.playing); };
 document.getElementById('speed').onchange = e => state.speed = +e.target.value;
-document.getElementById('show-help').onchange = e => { state.showHelp = e.target.checked; redraw(); };
-// function legend: one chip per job, labelled with the hemisphere(s) that do it
+document.getElementById('color-by').onchange = e => { state.colorBy = e.target.value; updateLegend(); redraw(); };
+document.getElementById('show-outlines').onchange = e => { state.outlines = e.target.checked; redraw(); };
+document.getElementById('show-network').onchange = e => { state.network = e.target.checked; redraw(); };
 (() => {
   const legend = document.getElementById('func-legend');
   for (const [i, name] of FUNC_ORDER.entries()) {
-    const sides = ['left', 'right'].filter(s => D.functions[s].names.includes(name)).map(s => s[0].toUpperCase());
+    const sides = SIDES.filter(s => D.functions[s].names.includes(name)).map(s => s[0].toUpperCase());
     const [r, g, b] = FUNC_COLORS[i % FUNC_COLORS.length].map(x => Math.round(x * 255));
     const s = document.createElement('span');
     s.innerHTML = `<i style="background:rgb(${r},${g},${b})"></i>`;
     s.append(`${name.replace(/_/g, ' ')} (${sides.join('+')})`);
     legend.append(s);
   }
-  document.getElementById('show-functions').onchange = e => {
-    state.showFunctions = e.target.checked; legend.hidden = !e.target.checked; redraw();
-  };
+  document.getElementById('show-functions').onchange = e => { state.showFunctions = e.target.checked; legend.hidden = !e.target.checked; redraw(); };
 })();
-document.querySelectorAll('.seg button').forEach(b => b.onclick = () => {
+document.querySelectorAll('[data-cond]').forEach(b => b.onclick = () => {
   state.cond = b.dataset.cond;
-  document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  document.querySelectorAll('[data-cond]').forEach(x => x.setAttribute('aria-pressed', x === b));
   redraw();
 });
-addEventListener('keydown', e => { if (e.code === 'Space' && e.target.tagName !== 'BUTTON') { e.preventDefault(); playBtn.click(); } });
+document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
+  state.view = b.dataset.view;
+  document.querySelectorAll('[data-view]').forEach(x => x.setAttribute('aria-pressed', x === b));
+  document.getElementById('sep').hidden = state.view !== 'separate';
+  document.getElementById('tog').hidden = state.view !== 'together';
+  updateLegend();
+});
+addEventListener('keydown', e => { if (e.code === 'Space' && !['BUTTON', 'SELECT', 'INPUT'].includes(e.target.tagName)) { e.preventDefault(); playBtn.click(); } });
 new ResizeObserver(() => drawChart(state.frame)).observe(chart);
 
 let last = performance.now();
 function loop(now) {
-  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  let dt = (now - last) / 1000; last = now;
+  dt = Number.isFinite(dt) && dt > 0 ? Math.min(0.1, dt) : 1 / 60;   // guard against odd timer values
   if (state.playing) {
-    state.acc += dt * 15 * state.speed;            // ~15 frames per second at 1x
+    state.acc += dt * 15 * state.speed;             // ~15 frames per second at 1x
     if (state.acc >= 1) {
       const next = Math.min(N - 1, state.frame + Math.floor(state.acc));
       state.acc %= 1; state.frame = next; redraw();
-      if (next >= N - 1) { state.playing = false; playBtn.textContent = 'Play'; }
+      if (next >= N - 1) setPlaying(false);
     }
   }
-  for (const v of Object.values(viewers)) { v.controls.update(); v.renderer.render(v.scene, v.camera); }
-  drawBridge(state.frame, dt);
+  const shown = state.view === 'together' ? ['together'] : SIDES;
+  if (state.view === 'together') movePulses(dt);
+  for (const name of shown) { const v = VIEWS[name]; v.controls.update(); v.renderer.render(v.scene, v.camera); }
+  if (state.view === 'separate') drawBridge(state.frame, dt);
   requestAnimationFrame(loop);
 }
-// Optional link settings, e.g. viewer.html#frame=150&cond=split&paused&functions  (handy for screenshots)
+// Optional link settings (handy for screenshots), e.g.
+//   viewer.html#frame=150&cond=split&paused&view=together&color=input&network&functions
 const hash = new URLSearchParams(location.hash.slice(1));
 if (hash.has('frame')) state.frame = Math.max(0, Math.min(N - 1, +hash.get('frame') || 0));
-if (hash.get('cond') === 'split') document.querySelector('.seg button[data-cond="split"]').click();
-if (hash.has('paused')) { state.playing = false; playBtn.textContent = 'Play'; }
+if (hash.get('cond') === 'split') document.querySelector('[data-cond="split"]').click();
+if (hash.has('paused')) setPlaying(false);
+if (hash.get('view') === 'together') document.querySelector('[data-view="together"]').click();
+if (hash.has('color')) { const s = document.getElementById('color-by'); s.value = hash.get('color'); s.onchange({ target: s }); }
+if (hash.has('network')) { const cb = document.getElementById('show-network'); cb.checked = true; cb.onchange({ target: cb }); }
 if (hash.has('functions')) { const cb = document.getElementById('show-functions'); cb.checked = true; cb.onchange({ target: cb }); }
+updateLegend();
 redraw();
+if (hash.has('paused')) movePulses(0.6);
 requestAnimationFrame(loop);
 </script>
 </body>

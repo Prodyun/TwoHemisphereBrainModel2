@@ -258,3 +258,22 @@ def test_real_brain_config_builds():
     assert "language" in names["left"] and "faces" in names["right"]
     assert "vision" in names["left"] and "vision" in names["right"]  # shared job
     assert not np.allclose(brain.left.W, brain.right.W)
+
+
+def test_viewer_shows_areas_wiring_and_callosal_fibres(fake_file, tmp_path):
+    import json
+    import re
+    cfg = fake_config(fake_file)
+    results = run_experiment(cfg)
+    html = build_viewer(cfg, results, summarize(results, cfg), tmp_path / "viewer.html").read_text(encoding="utf-8")
+    data = json.loads(re.search(r'<script id="brain-data" type="application/json">(.*?)</script>', html, re.S).group(1))
+    left = data["mesh"]["left"]
+    assert left["names"] and len(left["centers"]) == N          # one node per area, with its name
+    assert left["border"]                                       # area outlines
+    assert all(0 <= i < N and 0 <= j < N for i, j in left["links"])
+    frames = data["meta"]["n_frames"]
+    con = data["conditions"]["connected"]
+    assert data["callosal_links"] and len(con["r2l"]) == frames
+    assert len(con["r2l"][0]) == len(data["callosal_links"])
+    assert max(map(max, con["r2l"])) > 0                       # signals cross when connected
+    assert max(map(max, data["conditions"]["split"]["r2l"])) == 0  # and not when cut

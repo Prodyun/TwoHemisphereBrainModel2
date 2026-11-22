@@ -40,10 +40,15 @@ same results as before.
    sequence (language), a counting ramp (math), smooth waves (spatial attention), bursts (faces),
    slow rhythms (prosody, vision, movement). Each hemisphere also does a weaker copy of the other
    side's jobs at the matching areas (`shared_task`).
-4. **Disorder.** `lesion.type: spreading` grows where there is damage and moves along the wiring
-   (a network-spread model, like those used for neurodegenerative disease). `stroke` damages the
-   start area and its most strongly linked neighbours once, then stops. `cross_spread > 0` lets a
-   spreading disorder leak across the callosum.
+4. **Disorder.** `lesion.type: spreading` moves along the wiring. The real brain uses
+   `model: fisher_kpp`, the network Fisher-Kolmogorov model of prion-like protein spread
+   (Weickenmeier et al. 2019; Schafer et al. 2021): each step a little damage is carried along each
+   fibre (`transport`, shorter fibres carry more) and then grows where it lands (`growth`). Because
+   transport is slow and growth fast, areas are reached one after another, by wiring distance from
+   the start: a front that travels outward (with L_44 as the start, direct neighbours are reached
+   around step 440, the next ring ~730, the next ~870). `model: simple` is the earlier rule, in which
+   every connected area rises together. `stroke` damages the start area and its most strongly linked
+   neighbours once, then stops. `cross_spread > 0` lets a spreading disorder leak across the callosum.
 5. **Plasticity (adaptation).** Links into damaged areas strengthen, and the healthy hemisphere
    takes on more of the damaged side's jobs ("takeover"), only when the callosum is connected.
 
@@ -95,8 +100,11 @@ of the job back across (takeover). The function is then carried partly by the ot
 - The jobs' area lists come from the literature, not from these subjects.
 - BOLD stand-in: fMRI measures slow blood flow, so simulated activity is smoothed before
   computing FC. This is a simplification.
-- The spread rate (0.004 for the real brain) is chosen so about half the hemisphere is damaged by
-  the end of a run. It is not fitted to patient data.
+- The spreading settings (transport 0.002, growth 0.0105) are chosen so about half the hemisphere
+  is damaged by the end of a run. They are not fitted to patient data. Fibre length is approximated
+  by the straight-line distance between area centres (real fibres curve, so they are longer).
+- The model has 180 areas per hemisphere; the 3D surface (~32,000 points) is only drawn on. Every
+  point in an area shows that area's single value, which is why the viewer outlines each area.
 - 2 subjects is a pilot, not proof.
 
 ## Where things live

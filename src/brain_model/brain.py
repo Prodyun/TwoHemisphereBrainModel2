@@ -47,6 +47,9 @@ class Brain:
             "left": self.left.x.copy(), "right": self.right.x.copy(),
             "left_damage": self.left.damage.copy(), "right_damage": self.right.damage.copy(),
             "into_left": into_left, "into_right": into_right,
+            # link strengths used this step (they change with plasticity); the viewer uses them to
+            # show the signal on each callosal fibre
+            "gain_into_left": cc.gain_into_left.copy(), "gain_into_right": cc.gain_into_right.copy(),
             "left_task": task_left, "right_task": task_right,
         }
         for side, parts in (("left", parts_left), ("right", parts_right)):
