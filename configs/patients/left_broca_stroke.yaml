@@ -1,0 +1,7 @@
+# Example (virtual) patient: a left middle-cerebral-artery stroke hitting Broca's area and the
+# frontal and temporal language areas (aphasia). Damage values are illustrative; real patients
+# come from lesion scans.
+name: "Left Broca / language stroke (example)"
+disorder: stroke
+damage: {L_44: 0.95, L_45: 0.85, L_IFSp: 0.7, L_IFSa: 0.6, L_47l: 0.5, L_55b: 0.6, L_PSL: 0.6,
+         L_A5: 0.5, L_STSdp: 0.4, L_FOP4: 0.6}

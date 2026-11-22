@@ -21,18 +21,23 @@ TwoHemisphereBrainModel2/
 │   ├── hcp/                  #   real HCP data: download/prepare (enigma.py), load, fMRI
 │   ├── hemispheres/          #   base.py (shared + job patterns), left.py, right.py
 │   ├── connectivity/         #   corpus_callosum.py: link between hemispheres + plasticity
-│   ├── lesion.py             #   the disorder: spreading or stroke
-│   ├── simulation/           #   runner.py (experiment), rest.py + fit.py (fMRI fit)
+│   ├── lesion.py             #   the disorder: spreading, stroke, tumour, or a patient's damage map
+│   ├── recovery.py           #   healing driven by use (practice), with the golden-period window
+│   ├── therapy.py            #   practice (physical, imagery, BCI, sleep replay, VNS) + stimulation
+│   ├── patient.py            #   a patient file -> model config; the IDENTIFY problem card
+│   ├── planning.py           #   RECRUIT / DOSE / TIME searches for a personal plan
+│   ├── simulation/           #   runner.py (experiment), outcome.py (patient measures), rest.py + fit.py
 │   ├── visualization/        #   the 3D viewer (black screen, two rotatable hemispheres)
 │   ├── utils/                #   config loading
 │   └── brain.py              #   puts hemispheres + callosum + lesion together
-├── configs/                  # hcp.yaml (real brain), default.yaml (hand-made stand-in)
+├── configs/                  # hcp.yaml (real brain), default.yaml (stand-in), care.yaml (patient care),
+│                             #   patients/*.yaml (example patients)
 ├── scripts/                  # command-line entry points (see below)
 ├── experiments/              # write-ups of individual experiments
 ├── tests/                    # automated tests (pytest)
 ├── data/raw/, data/processed/  # downloaded and derived data (not committed to git)
 ├── results/                  # simulation outputs, one folder per run (not committed)
-└── docs/                     # architecture.md, data.md, requirements.md
+└── docs/                     # architecture.md, data.md, requirements.md, factors.md
 ```
 
 ## Getting started (Windows / PowerShell)
@@ -92,6 +97,33 @@ python scripts/fit_to_fmri.py       # fit left/right settings to real fMRI, with
 python scripts/run_batch.py         # all experiments x 20 seeds x 20 start areas (~10 min)
 python scripts/make_figures.py      # poster figures + results/figures_*/summary.md
 ```
+
+## A personal plan for a patient ("Brain SWAT")
+
+A patient file lists the damaged areas (any of the 360 Glasser areas, either side) and the disorder:
+
+```yaml
+# configs/patients/left_6d_stroke.yaml
+name: "Left 6d stroke (example)"
+disorder: stroke            # stroke | tumor | spreading
+damage: {L_6d: 0.95, L_6a: 0.7, L_4: 0.8, L_3a: 0.7}
+```
+
+```powershell
+python scripts/therapy_plan.py --patient configs/patients/left_6d_stroke.yaml   # ~2 minutes
+python scripts/find_targets.py --patient configs/patients/left_6d_stroke.yaml   # only "where to help"
+```
+
+The plan goes step by step:
+- **Identify** what is damaged and which jobs are hit.
+- **Recruit:** which healthy-side areas to stimulate.
+- **Dose:** which practice to use (physical, imagery, BCI, sleep replay, VNS) and how strong.
+- **Time:** the golden period.
+- **Predict** the recovery against standard care, today's standard target, no therapy and the split brain.
+
+Three measures are reported: physical repetitions to the goal, weeks to the goal, and final
+function. Output goes to `results/plans/<patient>/personal_plan.md` with two figures. Every
+adjustable factor is listed in [docs/factors.md](docs/factors.md).
 
 ## Running your own experiment
 

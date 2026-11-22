@@ -14,6 +14,8 @@ Two-hemisphere (left/right) brain model, simulated with AI, in Python.
 ## Requirements
 - The owner's requirements live in `docs/requirements.md`. Read it before planning new work,
   and ask about any blank sections that matter for the task.
+- `docs/project_requirements.md` combines everything agreed so far (original form + Brain SWAT plan +
+  results + status), in an order that maps onto the science fair proposal. Update it when plans change.
 
 ## User preferences
 - The owner is new to this kind of project: explain choices in plain language.
@@ -42,3 +44,21 @@ Two-hemisphere (left/right) brain model, simulated with AI, in Python.
   resting fMRI of 2 pilot subjects used only to check/fit the model.
 - The GitHub repo is public: never commit HCP data, derived data, or subject IDs (refer to
   "subject A/B"). Work on branch `real-hcp-brain`, small commits, push periodically, PR into main.
+
+## Project direction (decided 2026-11-22): "Brain SWAT"
+- The goal is to find the gap in research and industry, and to show in the model a faster, PERSONALISED way for
+  the healthy hemisphere to help the damaged one recover.
+- The pipeline, for any patient:
+  1. DETECT: early warning from left-right signals, including tests that need no scan.
+  2. IDENTIFY: the damage, mapped to the 180 Glasser areas per side.
+  3. CONTAIN: stop the spread.
+  4. RECRUIT: which healthy-side areas to stimulate.
+  5. DOSE: which repetition-free practice (imagery, BCI, sleep replay, VNS) and how much.
+  6. TIME: the golden period.
+  7. PREDICT: physical reps, weeks and final function.
+- Both halves matter equally: the prediction (where to stimulate) and the model demonstration.
+- Expose many adjustable factors (`configs/care.yaml`, documented in `docs/factors.md`).
+- Every number needs an authentic, cited source.
+- Patient biomarkers and genes personalise the factors.
+- Real lesions come from ATLAS. The owner signs the data-use agreement and downloads the files; never commit them.
+- The approved phased plan is kept in Claude's plan file. Work phase by phase, commit, then explain in plain language.

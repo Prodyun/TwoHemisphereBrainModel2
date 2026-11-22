@@ -1,0 +1,59 @@
+# PATIENT CARE settings: added on top of configs/hcp.yaml when a patient is simulated
+# (scripts/therapy_plan.py, scripts/find_targets.py). Every number here is a tunable model factor;
+# docs/factors.md lists each one with its range and source. Nothing here changes configs/hcp.yaml runs.
+
+time:
+  steps_per_day: 24       # model steps per simulated day: 1 step = 1 hour of brain time (assumption)
+
+care:
+  onset_day: 2            # normal days before the injury (gives a healthy reference period)
+  days: 120               # days simulated after the injury (~4 months: covers the CPASS window)
+  goal: 0.8               # "recovered" = the trained job back to 80% of its healthy strength
+  week_days: 7            # outcomes are scored week by week
+  washout_steps: 2        # steps after practice that are not scored (activity still settling)
+
+recovery:
+  enabled: true
+  spontaneous_per_day: 0.003   # share of the healable damage repaired per day without practice
+  use_rate: 0.03             # extra healing per step per unit of use during practice
+  floor_fraction: 0.3        # 30% of the worst damage is permanent (dead tissue)
+  saturation_reps: 300       # repetitions in one session after which more help half as much (Lang 2016)
+  callosal_use_weight: 1.0   # matching input arriving from the healthy side also counts as use
+  # Golden period: (days since injury, plasticity gain). CPASS (Dromerick 2021 PNAS): extra therapy
+  # gave +5.25 ARAT at <=30 days, +6.87 at 2-3 months, +2.41 (n.s.) at >=6 months -> relative gains
+  # 0.76, 1.0, 0.35. The first days and the decay after 6 months are assumptions (never measured).
+  window_points: [[0, 0.5], [20, 0.76], [75, 1.0], [180, 0.35], [365, 0.2]]
+
+therapy:
+  mode: physical            # physical | imagery | action_observation | bci, plus add-ons sleep_replay, vns
+  function: auto            # auto = the job of the damaged hemisphere that lost the most
+  start_day: 7              # first therapy day after the injury
+  days_per_week: 5
+  session_steps: 2          # practice hours per therapy day
+  reps_per_step: 150        # repetitions per practice hour: 2 x 150 = 300 per session (VNS-REHAB >300)
+  strength: 1.0             # practice input, relative to the job's normal input
+  feedback: 0.3             # sensory feedback into the touch areas when the limb actually moves
+  primary_areas: ["4", 3a, 3b, "1", "2"]       # primary motor/touch areas (weak during imagery)
+  feedback_areas: [3a, 3b, "1", "2"]
+  imagery: {primary: 0.35, other: 0.75}        # assumed (no measured %-of-execution exists; Hardwick 2018)
+  action_observation: {primary: 0.3, other: 0.6}
+  bci: {threshold: 0.1, contingent: true, hebbian_bonus: 1.0, random_rate: 0.5, decoder: damaged}
+  sleep_replay: {strength: 0.1, steps: 2}      # pilot evidence only: sweep 0-0.2
+  vns: {multiplier: 2.1, paired: true}         # VNS-REHAB: +5.0 vs +2.4 FMA (Dawson 2021 Lancet)
+
+stimulation:
+  paired: true              # stimulate only during practice steps
+  start_day: 7
+  strength: 0.3             # default strength for a target (positive = excite, negative = calm)
+
+# How each disorder behaves once the patient's damage map is in place.
+disorders:
+  stroke: {type: stroke}
+  tumor: {type: tumor, growth_steps: 480, pressure: 0.3, pressure_neighbors: 4}
+  spreading: {type: spreading, model: fisher_kpp, transport: 0.002, growth: 0.0105}
+
+# Today's standard healthy-side targets, used as the comparison for the model's personal targets.
+standard_targets:
+  movement: {area: "4", strength: -0.3, why: "low-frequency rTMS that calms the healthy M1 (NICHE, E-FIT)"}
+  language: {area: "45", strength: -0.3, why: "low-frequency rTMS that calms the right IFG pars triangularis"}
+  default: {area: mirror, strength: 0.3, why: "excite the healthy matching area"}

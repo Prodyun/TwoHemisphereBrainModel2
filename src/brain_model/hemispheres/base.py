@@ -154,12 +154,18 @@ class Hemisphere:
         return sum(self.task_parts(t).values())
 
     def step(self, t: int, callosal_input: np.ndarray, noise: np.ndarray,
-             partner_task: np.ndarray | None = None, task: np.ndarray | None = None) -> np.ndarray:
+             partner_task: np.ndarray | None = None, task: np.ndarray | None = None,
+             extra: np.ndarray | None = None, own_scale: np.ndarray | float = 1.0) -> np.ndarray:
+        """One update. `extra` = outside drive such as brain stimulation (it acts on the tissue, so it
+        is weakened by damage like the area's own input). `own_scale` < 1 = the other hemisphere's
+        "brake" (interhemispheric inhibition) turning down this area's own processing."""
         if task is None:  # the Brain passes it in so it is only worked out once per step
             task = self.task_input(t)
         if partner_task is not None:
             task = task + self.shared_task * partner_task
         own = self.gain * self.W @ self.x + self.stimulus_strength * task
-        drive = self.health * own + callosal_input + noise
+        if extra is not None:
+            own = own + extra
+        drive = self.health * own_scale * own + callosal_input + noise
         self.x = (1 - self.leak) * self.x + self.leak * np.tanh(drive)
         return self.x

@@ -24,10 +24,16 @@ from ..hemispheres import Hemisphere
 class CorpusCallosum:
     def __init__(self, strength: float, n_regions: int, plasticity_rate: float = 0.0,
                  plasticity_gain: float = 0.0, takeover_gain: float = 0.0,
-                 into_left: np.ndarray | None = None, into_right: np.ndarray | None = None):
+                 into_left: np.ndarray | None = None, into_right: np.ndarray | None = None,
+                 inhibition: float = 0.0):
         if not 0.0 <= strength <= 1.0:
             raise ValueError("corpus_callosum.strength must be between 0 and 1")
+        if inhibition < 0:
+            raise ValueError("corpus_callosum.inhibition must be >= 0")
         self.strength = strength
+        # Interhemispheric inhibition (the "brake"): each side's activity turns down the matching
+        # areas' own processing on the other side. 0 = off (the model before this was added).
+        self.inhibition = inhibition
         self.plasticity_rate = plasticity_rate
         self.plasticity_gain = plasticity_gain
         self.takeover_gain = takeover_gain
@@ -51,13 +57,27 @@ class CorpusCallosum:
     def route_into_right(self, values_on_left: np.ndarray) -> np.ndarray:
         return self._route(self.into_right_wiring, values_on_left)
 
-    def signals(self, left: Hemisphere, right: Hemisphere) -> tuple[np.ndarray, np.ndarray]:
+    def signals(self, left: Hemisphere, right: Hemisphere, out_left: np.ndarray | float = 1.0,
+                out_right: np.ndarray | float = 1.0) -> tuple[np.ndarray, np.ndarray]:
         """Signals arriving at (left, right) this step, sent from the other side's current activity.
 
-        A damaged sender transmits less (its output is scaled by its health)."""
-        into_left = self.gain_into_left * self.route_into_left(right.health * right.x)
-        into_right = self.gain_into_right * self.route_into_right(left.health * left.x)
+        A damaged sender transmits less (its output is scaled by its health). `out_left/right`
+        scale what each sender transmits (e.g. brain stimulation of the sending areas)."""
+        into_left = self.gain_into_left * self.route_into_left(out_right * right.health * right.x)
+        into_right = self.gain_into_right * self.route_into_right(out_left * left.health * left.x)
         return into_left, into_right
+
+    def brakes(self, left: Hemisphere, right: Hemisphere) -> tuple[np.ndarray | float, np.ndarray | float]:
+        """How much of its own processing each side keeps under the other side's brake (1 = no brake).
+
+        The brake grows with how active the sending areas are; it travels along the same callosal
+        wiring and is cut with the callosum (split brain = no brake)."""
+        if self.inhibition == 0 or self.strength == 0:
+            return 1.0, 1.0
+        from_right = self.route_into_left(right.health * np.abs(right.x))
+        from_left = self.route_into_right(left.health * np.abs(left.x))
+        k = self.inhibition * self.strength
+        return 1.0 / (1.0 + k * from_right), 1.0 / (1.0 + k * from_left)
 
     def adapt(self, left: Hemisphere, right: Hemisphere) -> None:
         """Move each link and takeover multiplier a little toward its target for the current damage."""

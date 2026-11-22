@@ -1,0 +1,5 @@
+# Example (virtual) patient: a slow-growing tumour in the RIGHT fusiform face complex (face
+# recognition). Damage values are illustrative; real patients come from scans.
+name: "Right FFC tumour (example)"
+disorder: tumor
+damage: {R_FFC: 0.5, R_PIT: 0.3, R_VVC: 0.2}

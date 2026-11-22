@@ -1,0 +1,5 @@
+# Example (virtual) patient: a stroke in the LEFT dorsal premotor cortex (6d) spreading into the
+# hand motor and touch areas. Damage values are illustrative; real patients come from lesion scans.
+name: "Left 6d stroke (example)"
+disorder: stroke
+damage: {L_6d: 0.95, L_6a: 0.7, L_4: 0.8, L_3a: 0.7, L_3b: 0.6, L_1: 0.5, L_6mp: 0.6, L_FEF: 0.4, L_55b: 0.3}
