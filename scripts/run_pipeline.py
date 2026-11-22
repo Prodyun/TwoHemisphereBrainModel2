@@ -108,8 +108,7 @@ def main() -> None:
                     status(f"FAILED at step {i}/{len(STEPS)}: {name} (see results/pipeline/log.txt)")
                     say(f"step {name} FAILED (exit {proc.returncode}) after {minutes:.1f} min", log)
                     sys.exit(1)
-                marker.write_text(f"{datetime.now():%Y-%m-%d %H:%M:%S}
-", encoding="utf-8")
+                marker.write_text(f"{datetime.now():%Y-%m-%d %H:%M:%S}\n", encoding="utf-8")
                 say(f"step {i}/{len(STEPS)} {name}: finished in {minutes:.1f} min", log)
             done_flag.write_text(f"{datetime.now():%Y-%m-%d %H:%M:%S}\n", encoding="utf-8")
             status(f"DONE. Figures and summary in {FIG_DIR.relative_to(ROOT).as_posix()}/")
@@ -131,4 +130,12 @@ def _alive(pid: int) -> bool:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:  # with no console window, a crash would be invisible: write it down
+        import traceback
+        PIPE.mkdir(parents=True, exist_ok=True)
+        with open(PIPE / "log.txt", "a", encoding="utf-8") as f:
+            f.write(traceback.format_exc())
+        status("FAILED: crashed (see results/pipeline/log.txt)")
+        raise
