@@ -73,7 +73,9 @@ _HEALTHY: dict = {}
 def healthy_for(plan: dict) -> dict:
     """The healthy reference run for a plan (cached per process: it depends only on the brain,
     the noise seed, the run length and the callosum, not on the lesion or the care)."""
-    key = (plan["seed"], plan["steps"], json.dumps(plan["corpus_callosum"], sort_keys=True))
+    key = (plan["seed"], plan["steps"], json.dumps(plan["corpus_callosum"], sort_keys=True),
+           json.dumps([plan["left_hemisphere"].get("functions"), plan["right_hemisphere"].get("functions")],
+                      sort_keys=True, default=str))
     if key not in _HEALTHY:
         if len(_HEALTHY) > 4:
             _HEALTHY.clear()

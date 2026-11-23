@@ -1,7 +1,13 @@
-"""Explore the model: click any of the 360 areas (either hemisphere) to start a disorder there.
+"""Explore the model: click any of the 360 areas (either hemisphere).
 
-    python scripts/explore.py                      # or double-click explore.bat
+    python scripts/explore.py                      # patient-care mode with the AI (default)
+    python scripts/explore.py --booth              # large fonts for a science-fair booth
+    python scripts/explore.py --disorder-mode      # the original "start a disorder here" mode
     python scripts/explore.py --config configs/hcp.yaml --port 8765
+
+Patient-care mode: click an area -> the AI Help Predictor says how likely the other hemisphere can
+help it, which areas carry the help, and which practice works best; "Simulate" then runs 4 months of
+care for the AI's plan, standard care and the split brain (and the judge's own plan, if chosen).
 
 Starts a small web server on this laptop only (127.0.0.1), opens the viewer in your browser, and
 runs a new simulation (connected brain vs split brain, about 3 seconds) each time you press
@@ -22,7 +28,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from brain_model.care_service import CareService  # noqa: E402
 from brain_model.hcp import load_hcp_brain  # noqa: E402
+from brain_model.visualization.care_view import care_page  # noqa: E402
 from brain_model.simulation import run_experiment, summarize  # noqa: E402
 from brain_model.utils import load_config  # noqa: E402
 from brain_model.visualization.viewer import run_payload, viewer_html, viewer_payload  # noqa: E402
@@ -65,7 +73,33 @@ def handle_run(base: dict, request: dict) -> tuple[int, dict]:
     return 200, run_payload(cfg, results, summary)
 
 
-def make_handler(base: dict, first_page: str):
+def handle_predict(service: CareService, request: dict) -> tuple[int, dict]:
+    area = str(request.get("area", ""))
+    if not area.startswith(("L_", "R_")):
+        return 400, {"error": "area must be a full name like L_6d"}
+    t0 = time.time()
+    with LOCK:
+        out = service.predict(area, float(request.get("severity", 0.9)), request.get("disorder", "stroke"))
+    best = out.get("best") or {}
+    print(f"predict {area}: best {best.get('mode')} {best.get('chance', 0):.0%}  [{time.time() - t0:.1f} s]", flush=True)
+    return 200, out
+
+
+def handle_simulate(service: CareService, request: dict) -> tuple[int, dict]:
+    t0 = time.time()
+    with LOCK:
+        payload = service.simulate(area=request.get("area"), severity=float(request.get("severity", 0.9)),
+                                   disorder=request.get("disorder", "stroke"), preset=request.get("preset") or None,
+                                   start_day=request.get("start_day"), judge=request.get("judge"),
+                                   prediction=request.get("prediction"))
+    summary = ", ".join(f"{c['label'].split(':')[0]}: week {c['measures']['weeks_to_goal']}"
+                        for c in payload["conditions"].values())
+    print(f"simulate {payload['meta']['care']['patient'].get('epicentre')}: {summary}  [{time.time() - t0:.1f} s]",
+          flush=True)
+    return 200, payload
+
+
+def make_handler(base: dict, first_page: str, service: CareService | None = None):
     class Handler(BaseHTTPRequestHandler):
         def _send(self, status: int, body: bytes, ctype: str) -> None:
             self.send_response(status)
@@ -82,12 +116,16 @@ def make_handler(base: dict, first_page: str):
                 self._send(404, b"not found", "text/plain")
 
         def do_POST(self):  # noqa: N802
-            if self.path != "/api/run":
+            routes = {"/api/run": lambda r: handle_run(base, r)}
+            if service is not None:
+                routes["/api/predict"] = lambda r: handle_predict(service, r)
+                routes["/api/simulate"] = lambda r: handle_simulate(service, r)
+            if self.path not in routes:
                 return self._send(404, b"not found", "text/plain")
             try:
                 length = int(self.headers.get("Content-Length", 0))
                 request = json.loads(self.rfile.read(length) or b"{}")
-                status, body = handle_run(base, request)
+                status, body = routes[self.path](request)
             except Exception as exc:  # report the problem in the viewer instead of crashing
                 status, body = 500, {"error": f"{type(exc).__name__}: {exc}"}
             self._send(status, json.dumps(body, separators=(",", ":")).encode("utf-8"), "application/json")
@@ -111,19 +149,32 @@ def main() -> None:
     parser.add_argument("--config", default=str(ROOT / "configs" / "hcp.yaml"))
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--no-open", action="store_true")
+    parser.add_argument("--booth", action="store_true", help="large fonts for a science-fair booth")
+    parser.add_argument("--disorder-mode", action="store_true", help="the original spreading-disorder explorer")
+    parser.add_argument("--care", default=str(ROOT / "configs" / "care.yaml"))
     args = parser.parse_args()
 
     import os
     os.chdir(ROOT)  # config paths (e.g. data/processed/hcp_brain.npz) are relative to the project
     base = load_config(args.config)
-    print("Preparing the first simulation ...", flush=True)
-    results, summary = simulate(base)
-    page = viewer_html(viewer_payload(base, results, summary, interactive=True))
+    service = None
+    if args.disorder_mode:
+        print("Preparing the first simulation ...", flush=True)
+        results, summary = simulate(base)
+        page = viewer_html(viewer_payload(base, results, summary, interactive=True))
+        how = "Click an area on either hemisphere, then 'Start disorder here'."
+    else:
+        service = CareService(base, load_config(args.care))
+        print("AI model:", "loaded" if service.predictor else "not trained yet (pathway tracer only)", flush=True)
+        print("Preparing the first patient (motor stroke, left 6d) ...", flush=True)
+        payload = service.simulate(preset="left_6d_stroke")
+        cfg, _ = service.config_for(preset="left_6d_stroke")
+        page = care_page(cfg, payload, interactive=True)
+        how = "Click any area: the AI predicts whether the other side can help; then press 'Simulate'."
     port = free_port(args.port)
-    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(base, page))
-    url = f"http://127.0.0.1:{port}/"
-    print(f"Viewer ready at {url}\nClick an area on either hemisphere, then 'Start disorder here'.\n"
-          "Keep this window open. Press Ctrl+C to stop.", flush=True)
+    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(base, page, service))
+    url = f"http://127.0.0.1:{port}/" + ("#booth" if args.booth else "")
+    print(f"Viewer ready at {url}\n{how}\nKeep this window open. Press Ctrl+C to stop.", flush=True)
     if not args.no_open:
         webbrowser.open(url)
     try:

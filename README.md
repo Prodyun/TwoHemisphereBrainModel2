@@ -26,6 +26,9 @@ TwoHemisphereBrainModel2/
 │   ├── therapy.py            #   practice (physical, imagery, BCI, sleep replay, VNS) + stimulation
 │   ├── patient.py            #   a patient file -> model config; the IDENTIFY problem card
 │   ├── planning.py           #   RECRUIT / DOSE / TIME searches for a personal plan
+│   ├── help_pathways.py      #   HOW the healthy side helps: per-area help shares and routes
+│   ├── help_data.py, help_model.py   # training data + the AI Help Predictor (scikit-learn)
+│   ├── care_service.py       #   predict / simulate logic behind the live explorer
 │   ├── simulation/           #   runner.py (experiment), outcome.py (patient measures), rest.py + fit.py
 │   ├── visualization/        #   the 3D viewer (black screen, two rotatable hemispheres)
 │   ├── utils/                #   config loading
@@ -37,7 +40,8 @@ TwoHemisphereBrainModel2/
 ├── tests/                    # automated tests (pytest)
 ├── data/raw/, data/processed/  # downloaded and derived data (not committed to git)
 ├── results/                  # simulation outputs, one folder per run (not committed)
-└── docs/                     # architecture.md, data.md, requirements.md, factors.md
+└── docs/                     # architecture.md, data.md, requirements.md, factors.md,
+                              #   how_it_works.md (plain-language guide), novelty.md
 ```
 
 ## Getting started (Windows / PowerShell)
@@ -124,6 +128,31 @@ The plan goes step by step:
 Three measures are reported: physical repetitions to the goal, weeks to the goal, and final
 function. Output goes to `results/plans/<patient>/personal_plan.md` with two figures. Every
 adjustable factor is listed in [docs/factors.md](docs/factors.md).
+
+## The AI Help Predictor and the live demo
+
+```powershell
+python scripts/fetch_area_data.py; python scripts/prepare_area_atlas.py   # real data about each area
+python scripts/build_help_dataset.py     # 7,200 simulated patients (~1-3 h, resumable)
+python scripts/train_help_model.py       # trains and tests the AI -> results/help_model/report.md
+python scripts/explore.py                # live demo: click any area, ask the AI, simulate (add --booth)
+python scripts/patient_viewer.py --patient configs/patients/left_6d_stroke.yaml   # a static demo file
+```
+
+Click any of the 360 areas. The AI Help Predictor (gradient-boosted trees trained on simulated patients) then shows:
+- the chance that the other hemisphere can help that area
+- the expected help, and the best practice mode
+- **which healthy-side areas carry the help** (help-pathway tracer)
+- **why**: the area's real properties that matter
+
+**Simulate** plays 4 months of care for three plans: the AI's plan, standard care, and the split brain. You can add your own plan ("Beat the AI"). The 3D view shows:
+- practice sessions, with the BCI's "decoder detected → feedback"
+- VNS pulses and stimulation flashes
+- repetition counters
+- gold help arcs
+- the damage healing
+
+The plain-language guide is [docs/how_it_works.md](docs/how_it_works.md). What is new compared with published work is in [docs/novelty.md](docs/novelty.md).
 
 ## Running your own experiment
 

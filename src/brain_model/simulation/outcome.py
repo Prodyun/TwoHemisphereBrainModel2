@@ -49,13 +49,19 @@ def weekly_function(run: dict, healthy: dict, cfg: dict) -> np.ndarray:
     mask = scored_steps(run, c["washout_steps"])
     act, ref = run[side][:, regions], healthy[side][:, regions]
     task = run[f"{side}_task:{job}"][:, regions]
+    # One stable yardstick: the healthy brain's job signal over the WHOLE period after the injury.
+    # (Dividing week by week makes the score explode for areas whose weekly healthy signal is tiny.)
+    after = np.arange(onset, len(act))
+    after = after[mask[after]]
+    h = task_signal(ref[after], task[after])
+    if h <= 1e-6:
+        raise ValueError(f"job '{job}' carries no measurable signal in the healthy brain")
     scores = []
     for start in range(onset, len(act) - week + 1, week):
         sl = np.arange(start, start + week)
         sl = sl[mask[sl]]
-        h = task_signal(ref[sl], task[sl])
-        scores.append(task_signal(act[sl], task[sl]) / h if h > 0 else 0.0)
-    return np.array(scores)
+        scores.append(task_signal(act[sl], task[sl]) / h)
+    return np.clip(np.array(scores), 0.0, 1.5)
 
 
 def measures(run: dict, healthy: dict, cfg: dict) -> dict:

@@ -115,6 +115,7 @@ class Brain:
         if self.therapy or self.stimulation:
             out["practice"] = practice.kind if practice is not None else 0
             out["stimulating"] = bool(self.stimulation and self.stimulation.active(t, practising))
+            out["bci_fired"] = bool(practice is not None and practice.bci_fired)
             out["reps_physical"] = self.reps_physical
             out["reps_mental"] = self.reps_mental
         for side, parts in (("left", parts_left), ("right", parts_right)):

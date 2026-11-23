@@ -153,6 +153,36 @@ validation phase):
 - In the split brain the same plan never reaches the goal.
 - A growing tumour cannot be out-practised. It must be contained first (next phase).
 
+## The AI Help Predictor (per-area chance of help, and how)
+
+- **Training data** (`help_data.py`, `scripts/build_help_dataset.py`): 7,200 simulated patients.
+  - Every one of the 360 areas is damaged, together with its 4 most strongly wired neighbours.
+  - Severity 0.6 or 0.9; stroke or tumour; 5 practice modes.
+  - Each case runs connected and split with the same noise.
+  - Labels: help (connected minus split final function), reached the goal, weeks, physical repetitions.
+  - Areas outside any configured job get a *local job* (`patient.ensure_job`), so every area can be scored.
+- **Features** (`help_model.area_features`): real properties of the damaged area.
+  - callosal fibres and their strength, a fibre to the mirror area, homotopic resting FC, two-step reach (HCP)
+  - network (Cole-Anticevic), volume, position
+  - plasticity and vulnerability genes (Allen atlas), 7 receptor densities (Hansen 2022 PET)
+  - plus the case: severity, disorder, mode
+- **Model:** scikit-learn HistGradientBoosting. A classifier predicts whether the goal is reached; regressors predict help and final function.
+- **Honest testing:** 5-fold cross-validation **grouped by area**, so every score is on areas the model never saw. It is compared with a wiring-only model and with always guessing the average. Permutation importance gives the "why".
+- **Results (2026-11-23):**
+
+  | Measure | AI | Baseline |
+  |---|---|---|
+  | AUC for reaching the goal | 0.94 | 0.86 (wiring only) |
+  | R² for help | 0.75 | 0.08 (wiring only) |
+  | Mean error for help | 1.7 points | 4.7 (always the average) |
+
+  Hypothesis H1 in `docs/novelty.md` passes.
+  - Most help: early visual areas on the left, orbitofrontal areas, and the motor strip.
+  - Least help: the left temporal language areas along the STS, which matches the support map.
+  - Negative help: the right early visual areas. This is a consequence of giving each side's vision job a different rhythm, not a finding.
+- **The "how"** (`help_pathways.trace`): during practice, the help reaching damaged area i from healthy area j is gain × callosal route weight × j's activity matched to the practised pattern. Two-step routes through a damaged-side neighbour are included. The result is each helper's share and route type (direct fibre / two steps via X).
+- **Live demo:** `care_service.py` + `visualization/care_view.py` + the viewer's patient-care mode (AI panel, help arcs, therapy banner, weekly chart).
+
 ## Assumptions and limitations (say these on the poster)
 
 - The wiring is a **group average** of many people, not one person's brain.
@@ -197,6 +227,9 @@ validation phase):
 | Target / dose / timing searches | `src/brain_model/planning.py` |
 | Patient outcome measures | `src/brain_model/simulation/outcome.py` |
 | Plan figures | `src/brain_model/visualization/plan_figures.py` |
+| Help pathways (how the healthy side helps) | `src/brain_model/help_pathways.py` |
+| AI Help Predictor: data, features, model | `src/brain_model/help_data.py`, `help_model.py` |
+| Live demo logic; viewer data for care | `src/brain_model/care_service.py`, `visualization/care_view.py` |
 | Whole brain | `src/brain_model/brain.py` |
 | Experiment and scoring | `src/brain_model/simulation/runner.py` |
 | Resting brain + fitting to fMRI | `src/brain_model/simulation/rest.py`, `fit.py` |

@@ -70,6 +70,33 @@
     max-width: 260px; }
   #tip b { color: #fff; }
   #tip .m { color: var(--muted); }
+  /* patient care: AI panel, therapy banner, helper legend */
+  body.care .layout { right: 350px; }
+  body.care.ai-closed .layout { right: 0; }
+  body.booth.care .layout { right: 430px; }
+  #ai { position: absolute; top: 10px; right: 10px; width: 330px; max-height: calc(100% - 20px); overflow: auto;
+    background: rgba(8, 11, 16, 0.92); border: 1px solid #2a3240; border-radius: 8px; padding: 10px 12px; z-index: 4;
+    font-size: 12.5px; }
+  #ai h2 { margin: 0 0 6px; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #ffc03a; }
+  #ai h3 { margin: 10px 0 4px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  #ai .big { font-size: 26px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+  #ai .bar { height: 7px; background: #1c222c; border-radius: 4px; overflow: hidden; margin: 2px 0 5px; }
+  #ai .bar i { display: block; height: 100%; background: linear-gradient(90deg, #2a78d6, #38e1ff); }
+  #ai .mode { display: grid; grid-template-columns: 96px 1fr 44px; gap: 6px; align-items: center; }
+  #ai ul { margin: 2px 0; padding-left: 16px; } #ai li { margin: 2px 0; }
+  #ai .ctl { display: grid; grid-template-columns: 74px 1fr; gap: 6px 8px; align-items: center; margin-top: 6px; }
+  #ai .ctl input[type=range] { min-width: 0; }
+  #ai .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  #ai .go { background: #10351f; border-color: #2f8a4f; }
+  #ai .verify { margin-top: 8px; padding: 6px 8px; border: 1px dashed #2a3240; border-radius: 6px; }
+  #ai .ok { color: #5fe08a; } #ai .bad { color: #ff7a7a; } #ai .m { color: var(--muted); }
+  #ai-toggle { position: absolute; top: 10px; right: 10px; z-index: 5; }
+  #banner { position: absolute; left: 50%; transform: translateX(-50%); bottom: 10px; z-index: 3; pointer-events: none;
+    background: rgba(8, 11, 16, 0.88); border: 1px solid #2a3240; border-radius: 8px; padding: 6px 12px;
+    font-size: 13px; text-align: center; max-width: 92%; }
+  #banner b { color: #fff; } #banner .p { color: #38e1ff; } #banner .n { color: #b48cff; }
+  #banner .z { color: #ffd84a; } #banner .v { color: #5fe08a; } #banner .m { color: var(--muted); }
+  body.booth { font-size: 17px; } body.booth #ai { width: 420px; font-size: 15px; } body.booth #banner { font-size: 17px; }
   @media (max-width: 760px) {
     body { height: auto; }
     main { height: 120vh; }
@@ -109,6 +136,9 @@
       <button class="reset" data-reset="together">Reset view</button>
     </section>
   </div>
+  <div id="banner" hidden></div>
+  <button id="ai-toggle" hidden>AI panel</button>
+  <aside id="ai" hidden aria-label="AI Help Predictor"></aside>
 </main>
 
 <footer>
@@ -123,15 +153,13 @@
       </select>
     </div>
     <div class="row">
-      <div class="seg" role="group" aria-label="Condition">
-        <button data-cond="connected" aria-pressed="true">Connected brain</button>
-        <button data-cond="split" aria-pressed="false">Split brain (callosum cut)</button>
-      </div>
+      <div class="seg" role="group" aria-label="Condition" id="cond-seg"></div>
       <label class="chk">Colour by
         <select id="color-by" aria-label="Colour by">
           <option value="damage" selected>Damage</option>
           <option value="input">Input from other side</option>
           <option value="activity">Activity</option>
+          <option value="help">Help arriving (patient care)</option>
         </select>
       </label>
     </div>
@@ -177,7 +205,13 @@ const SIDES = ['left', 'right'];
 const FRIENDLY = { '44': "Broca's area", '45': "Broca's area", '55b': 'speech area 55b', 'V1': 'primary visual',
   '4': 'primary motor', 'FFC': 'fusiform face complex', 'FEF': 'frontal eye field', 'MT': 'motion area MT' };
 const PICK = { sel: null, type: 'spreading', busy: false };   // the area chosen as the next start
-const state = { cond: 'connected', frame: 0, playing: true, speed: 1, colorBy: 'damage', outlines: true,
+const JUDGE = { targets: [], picking: false, mode: 'physical' };   // the judge's own plan
+let PRED = null;                                                     // the AI's latest answer
+const COND_LABEL = { connected: 'Connected brain', split: 'Split brain (callosum cut)' };
+const condKeys = () => (M.care && M.care.order) || Object.keys(D.conditions);
+const condLabel = k => (D.conditions[k] && D.conditions[k].label) || COND_LABEL[k] || k;
+const condCut = k => { const c = D.conditions[k]; return (c && c.strength != null) ? c.strength === 0 : (k === 'split' || M.strength === 0); };
+const state = { cond: condKeys()[0], frame: 0, playing: true, speed: 1, colorBy: 'damage', outlines: true,
   network: false, showFunctions: false, view: 'separate', acc: 0 };
 
 const areaName = (side, r) => {
@@ -190,6 +224,13 @@ const nice = (side, r) => { const a = areaName(side, r); return FRIENDLY[a] ? `$
 document.getElementById('spec-left').textContent = D.specialization.left;
 document.getElementById('spec-right').textContent = D.specialization.right;
 function setCaptions() {
+  if (M.care) {
+    const P = M.care.patient || {};
+    document.getElementById('subtitle').textContent =
+      `Patient: ${P.name || ''} · damage centred on ${P.epicentre || ''} (${damaged} hemisphere) · the ${healthySide} side helps · job trained: ${M.care.job.replace(/_/g, ' ')}`;
+    document.getElementById('tog-cap').textContent = `gold arcs = help pathways from the AI · pulses = signals crossing the corpus callosum`;
+    return;
+  }
   document.getElementById('subtitle').textContent = M.lesion_type === 'stroke'
     ? `A stroke hits ${nice(damaged, M.lesion_center)} (${damaged} hemisphere) at step ${M.start_step}; the ${healthySide} side can help`
     : `A disorder starts in ${nice(damaged, M.lesion_center)} (${damaged} hemisphere) at step ${M.start_step} and spreads; the ${healthySide} side can help`;
@@ -242,7 +283,7 @@ function regionColors(side, f) {
       [R, G, B] = d < 0.02 ? [0.34, 0.36, 0.40] : damageColor(d);
       const since = f - arrival[r];
       if (since >= 0 && since < 8) { const k = 0.75 * (1 - since / 8); R += (1 - R) * k; G += (1 - G) * k; B += (0.9 - B) * k; }
-    } else if (state.colorBy === 'input') {
+    } else if (state.colorBy === 'input' || state.colorBy === 'help') {
       const g = clamp01(into[r] / M.max_into), s = clamp01(out[r] / M.max_out);
       R = 0.10 + 0.95 * g + 0.10 * s; G = 0.11 + 0.70 * g + 0.55 * s; B = 0.14 + 0.10 * g + 0.75 * s;
     } else {
@@ -275,13 +316,13 @@ function bezier(a, b, lift, segs) {     // curve from a to b, bulging outward by
   }
   return pts;
 }
-function textSprite(text) {
+function textSprite(text, color = '#ff6b78') {
   const cv = document.createElement('canvas'), ctx = cv.getContext('2d');
   ctx.font = '600 44px system-ui, sans-serif';
   cv.width = Math.ceil(ctx.measureText(text).width) + 28; cv.height = 64;
   ctx.font = '600 44px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, cv.width, cv.height);
-  ctx.fillStyle = '#ff6b78'; ctx.textBaseline = 'middle'; ctx.fillText(text, 14, 33);
+  ctx.fillStyle = color; ctx.textBaseline = 'middle'; ctx.fillText(text, 14, 33);
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: false, transparent: true }));
   sp.scale.set(0.0011 * cv.width, 0.0011 * cv.height, 1);
   sp.renderOrder = 10;
@@ -332,12 +373,34 @@ function makeHemi(side, together) {
     new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthTest: false }));
   selMarker.renderOrder = 9; selMarker.visible = false;
   group.add(selMarker);
+  const helperGroup = new THREE.Group(); group.add(helperGroup);
   const borderSet = m.border ? new Uint8Array(m.vr.length / m.k) : null;
   if (borderSet) for (const v of m.border) borderSet[v] = 1;
-  const h = { side, m, group, geo, colors, surface, nodes, centers, links, linkColors, SEG, marker, selMarker, borderSet };
-  placeMarker(h);
+  const h = { side, m, group, geo, colors, surface, nodes, centers, links, linkColors, SEG, marker, selMarker, borderSet,
+    helperGroup, together };
+  placeMarker(h); placeHelpers(h);
   HEMIS.push(h);
   return h;
+}
+// AI helper areas (gold, size = share of the help) and the judge's chosen targets (white)
+function placeHelpers(h) {
+  for (const child of [...h.helperGroup.children]) { h.helperGroup.remove(child); child.geometry?.dispose(); child.material?.map?.dispose(); child.material?.dispose(); }
+  if (!M.care) return;
+  for (const hp of (M.care.helpers || []).slice(0, 6)) {
+    if (hp.side !== h.side) continue;
+    const r = 0.018 + 0.09 * Math.sqrt(hp.share);
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 14), new THREE.MeshBasicMaterial({ color: 0xffc03a, transparent: true, opacity: 0.85, depthTest: false }));
+    ball.position.copy(h.centers[hp.index]); ball.renderOrder = 8; ball.userData = { kind: 'helper', base: r, area: hp.index };
+    h.helperGroup.add(ball);
+    const label = textSprite(`${hp.area.replace(/^[LR]_/, '')} ${Math.round(hp.share * 100)}%`, '#ffc03a');
+    label.position.copy(h.centers[hp.index].clone().add(h.centers[hp.index].clone().normalize().multiplyScalar(0.1)));
+    label.scale.multiplyScalar(0.8); h.helperGroup.add(label);
+  }
+  for (const t of (JUDGE.targets || [])) {
+    if (t.side !== h.side) continue;
+    const ring = new THREE.Mesh(new THREE.SphereGeometry(0.03, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthTest: false }));
+    ring.position.copy(h.centers[t.index]); ring.renderOrder = 9; h.helperGroup.add(ring);
+  }
 }
 function placeMarker(h) {
   const { marker, centers, side } = h;
@@ -398,6 +461,15 @@ function paintHemi(h, f, rgb, dmg) {
   h.links.visible = any;
   h.marker.visible = h.marker.userData.active && f * M.stride >= M.start_step;
   h.selMarker.visible = !!PICK.sel && PICK.sel.side === h.side;
+  // stimulation flash: while the plan stimulates, the targeted areas glow blue-white
+  const cc = D.conditions[state.cond], stim = M.care && cc.stimulating && cc.stimulating[f] > 0;
+  const tgt = new Set(((M.care && cc.targets) || []).filter(t => t[0] === h.side).map(t => t[1]));
+  h.helperGroup.children.forEach(o => {
+    if (o.userData.kind !== 'helper') return;
+    const on = stim && tgt.has(o.userData.area);
+    o.material.color.setHex(on ? 0xbfe8ff : 0xffc03a);
+    o.scale.setScalar(on ? 1.5 : 1);
+  });
   if (h.selMarker.visible) h.selMarker.position.copy(h.centers[PICK.sel.region]);
 }
 
@@ -424,7 +496,7 @@ function makeView(el, homePos, scene) {
   };
   new ResizeObserver(resize).observe(el);
   resize();
-  return { el, renderer, scene, camera, controls, reset };
+  return { el, renderer, scene, camera, controls, reset, resize };
 }
 
 const VIEWS = {};
@@ -458,6 +530,23 @@ const ccColors = new Float32Array(3 * ccLinePts.length);
 ccGeo.setAttribute('color', new THREE.BufferAttribute(ccColors, 3));
 togScene.add(new THREE.LineSegments(ccGeo, new THREE.LineBasicMaterial({
   vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+// AI help pathways: gold arcs from each helper area to the damaged areas it reaches
+const arcGroup = new THREE.Group(); togScene.add(arcGroup);
+function buildArcs() {
+  for (const o of [...arcGroup.children]) { arcGroup.remove(o); o.geometry.dispose(); o.material.dispose(); }
+  if (!M.care) return;
+  const H = togHemis[healthySide], Dm = togHemis[damaged];
+  for (const hp of (M.care.helpers || []).slice(0, 6)) {
+    for (const r of hp.reaches.slice(0, 2)) {
+      const a = H.centers[hp.index].clone().add(H.group.position), b = Dm.centers[r].clone().add(Dm.group.position);
+      const pts = bezier(a, b, new THREE.Vector3(0, 0.18 + 0.4 * Math.abs(a.x - b.x), 0), 30);
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({
+        color: 0xffc03a, transparent: true, opacity: 0.35 + 0.65 * Math.min(1, hp.share * 4), depthTest: false, blending: THREE.AdditiveBlending }));
+      line.renderOrder = 7; arcGroup.add(line);
+    }
+  }
+}
+buildArcs();
 // pulses: 2 per direction per fibre; they travel in the direction the signal goes
 const PULSES = [];
 CC.forEach((_, l) => { for (const dir of ['r2l', 'l2r']) for (let k = 0; k < 2; k++) PULSES.push({ l, dir, t: (k + Math.random()) / 2 }); });
@@ -479,7 +568,7 @@ let towardDamaged = damaged === 'left' ? 'r2l' : 'l2r';
 const GOLD = [1.0, 0.75, 0.23], CYAN = [0.22, 0.88, 1.0];
 
 function paintCallosum(f) {
-  const c = D.conditions[state.cond], cut = state.cond === 'split' || M.strength === 0;
+  const c = D.conditions[state.cond], cut = condCut(state.cond);
   for (let l = 0; l < CC.length; l++) {
     const s = cut ? 0 : clamp01(Math.max(c.r2l[f][l], c.l2r[f][l]) / M.max_flux);
     const [R, G, B] = cut ? [0.28, 0.04, 0.05] : [0.05 + 0.30 * s, 0.045 + 0.22 * s, 0.03 + 0.06 * s];
@@ -549,6 +638,7 @@ for (const view of Object.values(VIEWS)) {
     const hit = areaAt(view, e);
     if (!hit) return;
     if (hit.region < 0) { setPickStatus('No brain area there (medial wall). Pick a coloured area.'); return; }
+    if (M.care && JUDGE.picking) { toggleJudgeTarget(hit.side, hit.region); return; }
     selectArea(hit.side, hit.region);
   });
 }
@@ -562,11 +652,13 @@ function selectArea(side, region) {
   const fi = D.functions[side].region[region];
   const job = fi >= 0 ? D.functions[side].names[fi].replace(/_/g, ' ') : 'no assigned job';
   pickText.innerHTML = `Selected: <b>${side} ${nice(side, region)}</b> · job: ${job} · the ${side === 'left' ? 'right' : 'left'} side will try to help`;
-  pickControls.hidden = false;
+  pickControls.hidden = !!M.care;
+  if (M.care) { AI.area = D.mesh[side].names[region]; PRED = null; renderAI(); predictNow(); }
   setPickStatus('');
   redraw();
 }
-if (M.interactive) pickText.textContent = 'Click any area on either hemisphere to choose where the disorder starts.';
+if (M.interactive && M.care) pickText.textContent = 'Click any area on either hemisphere: the AI predicts whether the other side can help it.';
+else if (M.interactive) pickText.textContent = 'Click any area on either hemisphere to choose where the disorder starts.';
 else pickText.innerHTML = 'To choose where it starts, run <code>python scripts/explore.py</code> (or double-click <code>explore.bat</code>).';
 document.querySelectorAll('[data-kind]').forEach(b => b.onclick = () => {
   PICK.type = b.dataset.kind;
@@ -592,26 +684,191 @@ function applyRun(data) {               // show a new run without reloading the 
   D.conditions = data.conditions; D.summary = data.summary; D.functions = data.functions;
   D.callosal_links = data.callosal_links;
   M = Object.assign({}, M, data.meta, { interactive: M.interactive });
+  M.care = data.meta.care || null;
   damaged = M.damaged; healthySide = damaged === 'left' ? 'right' : 'left';
   towardDamaged = damaged === 'left' ? 'r2l' : 'l2r';
-  computeArrival(); computeMaxHelp(); setCaptions(); updateLegend();
-  HEMIS.forEach(placeMarker);
+  computeArrival(); computeMaxHelp(); setCaptions(); updateLegend(); buildCondButtons();
+  HEMIS.forEach(placeMarker); HEMIS.forEach(placeHelpers); buildArcs(); renderAI();
   PICK.sel = null; pickControls.hidden = true;
   pickText.textContent = 'Click another area to try a different start.';
   setFrame(0); setPlaying(true);
 }
 
+// ---------- patient care: time, therapy banner ----------
+function careTime(f) {
+  const C = M.care, day = (f * M.stride - C.onset) / C.steps_per_day;
+  return day < 0 ? `Before the injury` : `Day ${Math.floor(day) + 1} · week ${Math.floor(day / 7) + 1}`;
+}
+const banner = document.getElementById('banner');
+function updateBanner(f) {
+  if (!M.care) { banner.hidden = true; return; }
+  const c = D.conditions[state.cond], C = M.care, day = (f * M.stride - C.onset) / C.steps_per_day;
+  const mode = c.mode || '', parts = [];
+  if (day < 0) parts.push('<span class="m">Healthy brain · the injury happens on day 1</span>');
+  else if (c.practice[f] === 1) {
+    const how = mode.includes('bci') ? 'BCI: <b>imagining</b> the movement (no physical effort)'
+      : mode.includes('imagery') ? 'Motor imagery: <b>imagining</b> the movement'
+      : mode.includes('action') ? 'Watching the movement' : '<b>Physical</b> practice';
+    parts.push(`<span class="p">● Practice session</span> · ${how}`);
+    if (mode.includes('bci')) parts.push(c.bci_fired[f] > 0 ? '<span class="v">decoder detected “trying” → feedback ✓</span>' : '<span class="m">decoder: waiting for “trying”…</span>');
+    if (mode.includes('vns')) parts.push('<span class="z">VNS pulse paired with each repetition</span>');
+    if (c.stimulating[f] > 0) parts.push(`<span class="z">⚡ stimulating ${(c.targets || []).map(t => t[3]).join(', ')}</span>`);
+  } else if (c.practice[f] === 2) parts.push('<span class="n">☾ Night: sleep replay of today\'s practice</span>');
+  else parts.push('<span class="m">Between sessions · the healthy side keeps sending help</span>');
+  const reps = `Repetitions: <b>${Math.round(c.reps_physical[f]).toLocaleString()}</b> physical · <b>${Math.round(c.reps_mental[f]).toLocaleString()}</b> mental`;
+  banner.innerHTML = `<b>${condLabel(state.cond)}</b><br>${parts.join(' · ')}<br>${reps}`;
+  banner.hidden = false;
+}
+
+// ---------- the AI panel ----------
+const aiEl = document.getElementById('ai'), aiToggle = document.getElementById('ai-toggle');
+const AI = { area: null, severity: 0.9, disorder: 'stroke', startDay: 7, preset: '', busy: false, status: '', open: true };
+aiToggle.onclick = () => { AI.open = !AI.open; renderAI(); };
+const esc = t => String(t).replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[ch]);
+const P100 = x => x == null ? '–' : Math.round(x * 100) + '%';
+function toggleJudgeTarget(side, region) {
+  if (side !== healthySide) { AI.status = `Targets go on the healthy (${healthySide}) side.`; renderAI(); return; }
+  const i = JUDGE.targets.findIndex(t => t.index === region);
+  if (i >= 0) JUDGE.targets.splice(i, 1); else if (JUDGE.targets.length < 3) JUDGE.targets.push({ side, index: region, area: D.mesh[side].names[region] });
+  HEMIS.forEach(placeHelpers); renderAI(); redraw();
+}
+async function api(path, body) {
+  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json(); if (!res.ok) throw new Error(data.error || res.statusText); return data;
+}
+async function predictNow() {
+  if (!M.interactive || !AI.area) return;
+  AI.busy = true; AI.status = 'The AI is thinking…'; renderAI();
+  try { PRED = await api('/api/predict', { area: AI.area, severity: AI.severity, disorder: AI.disorder }); AI.status = ''; }
+  catch (e) { AI.status = 'Could not predict: ' + e.message; }
+  AI.busy = false; renderAI();
+}
+async function simulateNow(withJudge) {
+  if (!M.interactive || AI.busy) return;
+  AI.busy = true; AI.status = 'Simulating 4 months of care for each plan… (about 20-40 s)'; renderAI();
+  const body = AI.preset ? { preset: AI.preset } : { area: AI.area, severity: AI.severity, disorder: AI.disorder, prediction: PRED };
+  body.start_day = AI.startDay;
+  if (withJudge) body.judge = { mode: JUDGE.mode, targets: JUDGE.targets.map(t => ({ area: t.area, strength: 0.5 })) };
+  try { const data = await api('/api/simulate', body); applyRun(data); PRED = M.care.prediction; AI.status = 'Done. Press Play to watch the care unfold.'; }
+  catch (e) { AI.status = 'Could not simulate: ' + e.message; }
+  AI.busy = false; renderAI();
+}
+function verifyBox() {
+  const pred = (M.care && M.care.prediction) || {}, rec = D.conditions.recommended;
+  if (!pred.best || !rec || !rec.measures) return '';
+  const said = pred.best.chance >= 0.5, did = rec.measures.weeks_to_goal != null;
+  const dF = (rec.measures.final_function - pred.best.final_function / 100) * 100;
+  const match = said === did;
+  return `<div class="verify"><b>Predict, then verify</b><br>AI said: ${Math.round(pred.best.chance * 100)}% chance to reach the goal, final ≈ ${Math.round(pred.best.final_function)}%` +
+    `<br>Simulation: ${did ? 'reached the goal in week ' + rec.measures.weeks_to_goal : 'did not reach the goal'}, final ${P100(rec.measures.final_function)}` +
+    `<br><span class="${match && Math.abs(dF) < 6 ? 'ok' : 'bad'}">${match ? '✔ outcome predicted correctly' : '✖ outcome predicted wrongly'} · final off by ${dF >= 0 ? '+' : ''}${dF.toFixed(1)} points</span></div>`;
+}
+function renderAI() {
+  const care = !!M.care;
+  aiEl.hidden = !care || !AI.open; aiToggle.hidden = !care || AI.open;
+  document.body.classList.toggle('care', care);
+  document.body.classList.toggle('ai-closed', care && !AI.open);
+  window.dispatchEvent(new Event('resize'));
+  if (!care) return;
+  const pred = PRED || M.care.prediction || {};
+  const area = AI.area || pred.area || (M.care.patient || {}).epicentre || '';
+  let h = `<button style="float:right" onclick="document.getElementById('ai-toggle').click()">hide</button><h2>AI Help Predictor</h2>`;
+  if (pred.best) {
+    h += `<div class="m">Chance the ${healthySide} side can help <b>${esc(area)}</b> reach ${Math.round(M.care.goal * 100)}%</div>` +
+      `<div class="big">${Math.round(pred.best.chance * 100)}%</div>` +
+      `<div class="m">best: <b>${esc(pred.best.mode)}</b> · expected help ${pred.best.help_points >= 0 ? '+' : ''}${pred.best.help_points.toFixed(1)} points vs split brain</div>`;
+    const lo = Math.min(...pred.modes.map(m => m.final_function)) - 5, hi = Math.max(...pred.modes.map(m => m.final_function));
+    h += `<h3>Expected final function by practice mode</h3>` + [...pred.modes].sort((a, b) => b.final_function - a.final_function).map(m =>
+      `<div class="mode" title="chance to reach the goal: ${Math.round(m.chance * 100)}%"><span>${esc(m.mode)}</span>` +
+      `<div class="bar"><i style="width:${Math.round(100 * (m.final_function - lo) / Math.max(1, hi - lo))}%"></i></div>` +
+      `<span>${Math.round(m.final_function)}%</span></div>`).join('') +
+      `<div class="m">bar length is relative; hover a mode for its chance of reaching the goal</div>`;
+  } else if (area) h += `<div class="m">${esc(pred.source || 'Click an area to ask the AI.')}</div>`;
+  const helpers = pred.helpers || [];
+  if (helpers.length) {
+    h += `<h3>How the help travels</h3><ul>` + helpers.slice(0, 4).map(x =>
+      `<li><b>${Math.round(x.share * 100)}%</b> from <b>${esc(x.area)}</b> <span class="m">(${esc(x.route)})</span> → ${esc((x.reaches || []).join(', '))}</li>`).join('') + '</ul>';
+    const top = helpers.slice(0, 2).map(x => x.area).join(' and ');
+    h += `<h3>What must happen on the other side</h3><div>${esc(top)} must be active <i>with</i> the practised movement. ` +
+      `Practice that engages both sides, and stimulation that makes ${esc(top)} more excitable, raise the help.</div>`;
+  }
+  if ((pred.why || []).length) h += `<h3>Why (what the AI looked at)</h3><ul>` + pred.why.map(w => `<li>${esc(w)}</li>`).join('') + '</ul>';
+  if (pred.metrics && pred.metrics.auc_success != null)
+    h += `<div class="m">Tested on areas it never saw: AUC ${pred.metrics.auc_success.toFixed(2)} · help R² ${pred.metrics.r2_help.toFixed(2)}</div>`;
+  if (pred.source) h += `<div class="m">${esc(pred.source)}</div>`;
+  const rows = condKeys().filter(k => D.conditions[k].measures);
+  if (rows.length) {
+    h += `<h3>Simulated outcome (4 months)</h3><table style="width:100%;font-size:12px"><tr class="m"><td>plan</td><td>weeks</td><td>phys reps</td><td>final</td></tr>` +
+      rows.map(k => { const m = D.conditions[k].measures; return `<tr><td>${esc(condLabel(k).split(':')[0])}</td><td>${m.weeks_to_goal ?? '–'}</td>` +
+        `<td>${m.physical_reps_to_goal == null ? '–' : Math.round(m.physical_reps_to_goal).toLocaleString()}</td><td>${P100(m.final_function)}</td></tr>`; }).join('') + '</table>';
+    h += verifyBox();
+  }
+  if (M.interactive) {
+    h += `<h3>Try it</h3><div class="ctl">
+      <span>Damage</span><span>${esc(area || 'click an area')}</span>
+      <span>Severity</span><input type="range" min="0.3" max="0.95" step="0.05" value="${AI.severity}" id="ai-sev">
+      <span>Disorder</span><select id="ai-dis"><option value="stroke">stroke</option><option value="tumor">tumour</option></select>
+      <span>Start day</span><input type="number" min="1" max="100" value="${AI.startDay}" id="ai-day" style="width:70px">
+      <span>Preset</span><select id="ai-preset"><option value="">(the clicked area)</option>
+        <option value="left_6d_stroke">Motor stroke (left 6d)</option><option value="left_broca_stroke">Language stroke (left Broca)</option>
+        <option value="right_ffc_tumor">Tumour (right face area)</option></select></div>
+      <div class="btns"><button id="ai-predict">Ask the AI</button><button class="go" id="ai-sim">Simulate the AI plan</button></div>
+      <h3>Beat the AI (your own plan)</h3><div class="ctl"><span>Practice</span><select id="j-mode">
+        ${['physical', 'imagery', 'bci', 'bci+vns', 'imagery+sleep'].map(m => `<option ${m === JUDGE.mode ? 'selected' : ''}>${m}</option>`).join('')}</select>
+      <span>Targets</span><span>${JUDGE.targets.map(t => esc(t.area)).join(', ') || '<span class="m">none</span>'}</span></div>
+      <div class="btns"><button id="j-pick">${JUDGE.picking ? 'Done picking' : 'Pick targets on the ' + healthySide + ' side'}</button>
+        <button class="go" id="j-race">Race my plan vs the AI</button></div>`;
+  }
+  if (AI.status) h += `<div class="verify">${esc(AI.status)}</div>`;
+  aiEl.innerHTML = h;
+  if (!M.interactive) return;
+  const $ = id => document.getElementById(id);
+  $('ai-sev').oninput = e => { AI.severity = +e.target.value; };
+  $('ai-sev').onchange = () => predictNow();
+  $('ai-dis').value = AI.disorder; $('ai-dis').onchange = e => { AI.disorder = e.target.value; predictNow(); };
+  $('ai-day').onchange = e => { AI.startDay = Math.max(1, +e.target.value || 7); };
+  $('ai-preset').value = AI.preset; $('ai-preset').onchange = e => { AI.preset = e.target.value; };
+  $('ai-predict').onclick = () => predictNow();
+  $('ai-sim').onclick = () => simulateNow(false);
+  $('j-mode').onchange = e => { JUDGE.mode = e.target.value; };
+  $('j-pick').onclick = () => { JUDGE.picking = !JUDGE.picking; AI.status = JUDGE.picking ? `Click up to 3 areas on the ${healthySide} hemisphere.` : ''; renderAI(); };
+  $('j-race').onclick = () => simulateNow(true);
+}
+renderAI();
+
 // ---------- readouts, legend ----------
 function mean(a) { let s = 0; for (const x of a) s += x; return s / a.length; }
+function careWeek(f) {
+  const C = M.care; return Math.floor((f * M.stride - C.onset) / C.week_steps);
+}
 function updateText(f) {
   const c = D.conditions[state.cond];
+  if (M.care) {
+    const hit = Object.keys(M.care.damage_map || {}).filter(n => n.startsWith(damaged === 'left' ? 'L_' : 'R_'))
+      .map(n => D.mesh[damaged].names.indexOf(n)).filter(i => i >= 0);
+    const d0 = mean(hit.map(i => c[damaged + '_damage'][0 + Math.ceil(M.care.onset / M.stride) + 1]?.[i] ?? 0)) / SC;
+    const dNow = mean(hit.map(i => c[damaged + '_damage'][f][i])) / SC;
+    const wk = careWeek(f), weekly = c.weekly || [], fn = wk >= 0 && wk < weekly.length ? weekly[wk] : null;
+    const tD = `Damaged areas: ${pct(dNow)} damage${wk >= 0 && d0 > 0 ? ` (was ${pct(d0)})` : ''} · trained job this week: ${pct(fn)}`;
+    const tH = `Healthy side: sending help to ${hit.length} damaged areas`;
+    for (const side of SIDES) {
+      const t = side === damaged ? tD : tH;
+      document.getElementById('state-' + side).textContent = t;
+      document.getElementById('tstate-' + side).textContent = `${side[0].toUpperCase() + side.slice(1)}: ${t}`;
+    }
+    document.getElementById('time').textContent = careTime(f);
+    document.getElementById('slider').value = f;
+    updateBanner(f);
+    return;
+  }
   for (const side of SIDES) {
     const t = `Damage ${pct(mean(c[side + '_damage'][f]) / SC)} · Function ${pct(c['score_' + side][f])}` +
       ` · areas reached ${c[side + '_damage'][f].filter(d => d > 0.1 * SC).length}/${c[side + '_damage'][f].length}`;
     document.getElementById('state-' + side).textContent = t;
     document.getElementById('tstate-' + side).textContent = `${side[0].toUpperCase() + side.slice(1)}: ${t}`;
   }
-  document.getElementById('time').textContent = `Step ${f * M.stride} / ${M.steps}`;
+  document.getElementById('time').textContent = M.care ? careTime(f) : `Step ${f * M.stride} / ${M.steps}`;
+  updateBanner(f);
   document.getElementById('slider').value = f;
 }
 function updateLegend() {
@@ -632,7 +889,7 @@ const bridge = document.getElementById('bridge'), bctx = bridge.getContext('2d')
 const particles = Array.from({ length: 70 }, () => ({ t: Math.random(), y: Math.random(), dir: Math.random() < 0.5 ? 1 : -1 }));
 function helpAmount(c, f) { return mean(c['into_' + damaged][f]) / SC; }
 let maxHelp = 1;
-function computeMaxHelp() { let mx = 1e-6; const c = D.conditions.connected; for (let f = 0; f < N; f++) mx = Math.max(mx, helpAmount(c, f)); maxHelp = mx; }
+function computeMaxHelp() { let mx = 1e-6; const c = D.conditions[condKeys()[0]]; for (let f = 0; f < N; f++) mx = Math.max(mx, helpAmount(c, f)); maxHelp = mx; }
 computeMaxHelp();
 function drawBridge(f, dt) {
   const w = bridge.clientWidth, h = bridge.clientHeight, dpr = Math.min(devicePixelRatio, 2);
@@ -641,13 +898,13 @@ function drawBridge(f, dt) {
   bctx.setTransform(dpr, 0, 0, dpr, 0, 0); bctx.clearRect(0, 0, w, h);
   const vertical = w < h, len = vertical ? w : h, span = vertical ? h : w;
   const cap = document.getElementById('bridge-cap');
-  if (state.cond === 'split') {
+  if (condCut(state.cond)) {
     bctx.strokeStyle = '#e0303f'; bctx.setLineDash([6, 6]); bctx.lineWidth = 1.5; bctx.beginPath();
     if (vertical) { bctx.moveTo(w / 2, 16); bctx.lineTo(w / 2, h - 28); } else { bctx.moveTo(16, h / 2); bctx.lineTo(w - 16, h / 2); }
     bctx.stroke(); bctx.setLineDash([]); cap.textContent = 'Callosum cut'; return;
   }
   cap.textContent = 'Corpus callosum';
-  const help = helpAmount(D.conditions.connected, f) / maxHelp, toward = damaged === 'left' ? -1 : 1;
+  const help = helpAmount(D.conditions[state.cond], f) / maxHelp, toward = damaged === 'left' ? -1 : 1;
   for (const p of particles) {
     const isHelp = p.dir === toward, speed = isHelp ? 0.35 + 0.9 * help : 0.35;
     p.t += dt * speed * state.speed * (state.playing ? 1 : 0.15);
@@ -677,7 +934,9 @@ function drawChart(f) {
   ctx.fillStyle = 'rgba(224,48,63,0.18)'; ctx.beginPath(); ctx.moveTo(X(0), Y(0));
   for (let i = 0; i < N; i++) ctx.lineTo(X(i), Y(mean(c[damaged + '_damage'][i]) / SC));
   ctx.lineTo(X(N - 1), Y(0)); ctx.closePath(); ctx.fill();
+  if (M.care) { drawCareChart(ctx, w, h, L, R, T, B, pw, ph, X, Y, f); return; }
   for (const [name, color] of [['split', '#8a93a3'], ['connected', '#38e1ff']]) {
+    if (!D.conditions[name]) continue;
     const s = D.conditions[name]['score_' + damaged];
     ctx.strokeStyle = color; ctx.lineWidth = name === state.cond ? 2.2 : 1.2; ctx.globalAlpha = name === state.cond ? 1 : 0.55;
     ctx.beginPath(); let started = false;
@@ -693,6 +952,29 @@ function drawChart(f) {
     ctx.fillStyle = color; ctx.fillRect(kx - tw - 14, 5, 9, 9); kx -= tw + 28;
   }
   ctx.fillStyle = '#7d8899'; ctx.textAlign = 'left'; ctx.fillText('time →', L, h - 8);
+}
+const CARE_COLORS = { recommended: '#38e1ff', judge: '#ffffff', standard_care: '#ffc03a', split: '#8a93a3' };
+function drawCareChart(ctx, w, h, L, R, T, B, pw, ph, X, Y, f) {
+  const C = M.care, wk = C.week_steps / M.stride, on = C.onset / M.stride;
+  ctx.setLineDash([4, 4]); ctx.strokeStyle = '#5fe08a'; ctx.beginPath(); ctx.moveTo(L, Y(C.goal)); ctx.lineTo(L + pw, Y(C.goal)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = '#5fe08a'; ctx.textAlign = 'left'; ctx.fillText(`goal ${Math.round(C.goal * 100)}%`, L + 4, Y(C.goal) - 7);
+  for (const k of condKeys()) {
+    const ys = D.conditions[k].weekly || [];
+    ctx.strokeStyle = CARE_COLORS[k] || '#b48cff'; ctx.lineWidth = k === state.cond ? 2.4 : 1.3; ctx.globalAlpha = k === state.cond ? 1 : 0.6;
+    ctx.beginPath();
+    ys.forEach((v, i) => { const x = X(Math.min(N - 1, on + (i + 1) * wk)); i ? ctx.lineTo(x, Y(v)) : ctx.moveTo(x, Y(v)); });
+    ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(X(f), T); ctx.lineTo(X(f), T + ph); ctx.stroke();
+  ctx.textAlign = 'left'; ctx.fillStyle = '#d6deea';
+  ctx.fillText(`Trained job (${C.job.replace(/_/g, ' ')}), % of healthy, week by week`, L, 9);
+  let kx = L + pw; ctx.textAlign = 'right';
+  for (const k of [...condKeys()].reverse()) {
+    const label = condLabel(k).split(':')[0];
+    ctx.fillStyle = '#7d8899'; ctx.fillText(label, kx, 9); const tw = ctx.measureText(label).width;
+    ctx.fillStyle = CARE_COLORS[k] || '#b48cff'; ctx.fillRect(kx - tw - 14, 5, 9, 9); kx -= tw + 28;
+  }
+  ctx.fillStyle = '#7d8899'; ctx.textAlign = 'left'; ctx.fillText('weeks after the injury →', L, h - 8);
 }
 chart.addEventListener('pointerdown', e => {
   const r = chart.getBoundingClientRect(), pw = r.width - 52;
@@ -731,16 +1013,23 @@ document.getElementById('show-network').onchange = e => { state.network = e.targ
   }
   document.getElementById('show-functions').onchange = e => { state.showFunctions = e.target.checked; legend.hidden = !e.target.checked; redraw(); };
 })();
-document.querySelectorAll('[data-cond]').forEach(b => b.onclick = () => {
-  state.cond = b.dataset.cond;
-  document.querySelectorAll('[data-cond]').forEach(x => x.setAttribute('aria-pressed', x === b));
-  redraw();
-});
+function buildCondButtons() {
+  const seg = document.getElementById('cond-seg'); seg.innerHTML = '';
+  if (!condKeys().includes(state.cond)) state.cond = condKeys()[0];
+  for (const k of condKeys()) {
+    const b = document.createElement('button'); b.dataset.cond = k; b.textContent = condLabel(k).split(' (')[0].replace(/^AI plan:.*/, 'AI plan');
+    b.title = condLabel(k); b.setAttribute('aria-pressed', k === state.cond);
+    b.onclick = () => { state.cond = k; seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); redraw(); };
+    seg.append(b);
+  }
+}
+buildCondButtons();
 document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
   state.view = b.dataset.view;
   document.querySelectorAll('[data-view]').forEach(x => x.setAttribute('aria-pressed', x === b));
   document.getElementById('sep').hidden = state.view !== 'separate';
   document.getElementById('tog').hidden = state.view !== 'together';
+  for (const v of Object.values(VIEWS)) v.resize();   // a view that started hidden has size 0 until resized
   updateLegend();
 });
 addEventListener('keydown', e => { if (e.code === 'Space' && !['BUTTON', 'SELECT', 'INPUT'].includes(e.target.tagName)) { e.preventDefault(); playBtn.click(); } });
@@ -768,12 +1057,18 @@ function loop(now) {
 //   viewer.html#frame=150&cond=split&paused&view=together&color=input&network&functions
 const hash = new URLSearchParams(location.hash.slice(1));
 if (hash.has('frame')) state.frame = Math.max(0, Math.min(N - 1, +hash.get('frame') || 0));
-if (hash.get('cond') === 'split') document.querySelector('[data-cond="split"]').click();
+if (hash.has('cond')) document.querySelector(`[data-cond="${hash.get('cond')}"]`)?.click();
 if (hash.has('paused')) setPlaying(false);
 if (hash.get('view') === 'together') document.querySelector('[data-view="together"]').click();
 if (hash.has('color')) { const s = document.getElementById('color-by'); s.value = hash.get('color'); s.onchange({ target: s }); }
 if (hash.has('network')) { const cb = document.getElementById('show-network'); cb.checked = true; cb.onchange({ target: cb }); }
 if (hash.has('functions')) { const cb = document.getElementById('show-functions'); cb.checked = true; cb.onchange({ target: cb }); }
+if (hash.has('booth')) document.body.classList.add('booth');
+if (hash.has('seek') && M.care) {      // e.g. #seek=practice&day=50 jumps to a practice session after day 50
+  const c = D.conditions[state.cond], from = Math.ceil((M.care.onset + (+hash.get('day') || 0) * M.care.steps_per_day) / M.stride);
+  const want = hash.get('seek') === 'night' ? 2 : 1;
+  for (let i = from; i < N; i++) if (c.practice[i] === want && (want !== 1 || !c.mode.includes('bci') || c.bci_fired[i] > 0)) { state.frame = i; break; }
+}
 updateLegend();
 redraw();
 if (hash.has('paused')) movePulses(0.6);

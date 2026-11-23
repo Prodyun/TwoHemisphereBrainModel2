@@ -46,6 +46,10 @@ stimulation:
   start_day: 7
   strength: 0.3             # default strength for a target (positive = excite, negative = calm)
 
+# Areas that belong to no configured job get a LOCAL job so their recovery can be scored: the area
+# plus its strongest same-side neighbours (not used by other jobs), driven by a steady rhythm.
+local_job: {neighbors: 5, period: 60}
+
 # How each disorder behaves once the patient's damage map is in place.
 disorders:
   stroke: {type: stroke}

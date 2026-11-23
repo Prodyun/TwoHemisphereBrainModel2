@@ -18,6 +18,7 @@ import numpy as np
 import yaml
 
 from .brain import Brain, steps_per_day
+from .hcp import DEFAULT_FILE, load_hcp_brain
 
 
 def load_patient(path: str | Path) -> dict:
@@ -57,6 +58,46 @@ def _auto_function(cfg: dict, side: str, damage: dict) -> str:
     return best
 
 
+def patient_from_area(area: str, severity: float, disorder: str = "stroke", neighbors: int = 4,
+                      neighbor_share: float = 0.6, anatomy_file: str = DEFAULT_FILE) -> dict:
+    """A patient made from one clicked area: the area at `severity`, plus its `neighbors` most
+    strongly wired same-side areas at neighbor_share x severity (a typical lesion is not one atlas area)."""
+    brain = load_hcp_brain(anatomy_file)
+    side = "left" if area.startswith("L_") else "right"
+    names = brain.side_names(side)
+    if area not in names:
+        raise ValueError(f"unknown area {area}")
+    sc = brain.sc_left if side == "left" else brain.sc_right
+    row = sc[names.index(area)]
+    near = [names[j] for j in np.argsort(row)[::-1][:neighbors] if row[j] > 0]
+    damage = {area: float(severity), **{n: round(float(severity) * neighbor_share, 3) for n in near}}
+    return {"name": f"{area} {disorder} (severity {severity:.2f})", "disorder": disorder, "damage": damage}
+
+
+def ensure_job(cfg: dict, side: str, area: str, care: dict) -> str:
+    """The job the damaged area belongs to. Many of the 180 areas are not part of any configured job,
+    so their recovery could not be scored: they get a LOCAL job (the area plus its strongest same-side
+    neighbours not used by other jobs, with a steady rhythm). Returns the job's name."""
+    funcs = cfg[f"{side}_hemisphere"]["functions"]
+    prefix = "L_" if side == "left" else "R_"
+    short = area[2:]
+    for name, f in funcs.items():
+        if short in [str(a) for a in f["areas"]]:
+            return name
+    lj = care.get("local_job", {})
+    brain = load_hcp_brain(cfg["anatomy"].get("file", DEFAULT_FILE))
+    names = brain.side_names(side)
+    sc = brain.sc_left if side == "left" else brain.sc_right
+    used = {str(a) for f in funcs.values() for a in f["areas"]}
+    row = sc[names.index(area)]
+    near = [names[j][2:] for j in np.argsort(row)[::-1] if row[j] > 0 and names[j][2:] not in used]
+    job = f"local_{short}"
+    funcs[job] = {"areas": [short] + near[: lj.get("neighbors", 5)], "pattern": "sine",
+                  "params": {"period": lj.get("period", 60), "phase": 0.0}}
+    assert all((prefix + a) in names for a in funcs[job]["areas"])
+    return job
+
+
 def patient_config(base: dict, care: dict, patient: dict) -> dict:
     cfg = deep_merge(base, {k: v for k, v in care.items() if k not in ("disorders", "standard_targets")})
     damage = {str(k): float(v) for k, v in patient["damage"].items()}
@@ -75,8 +116,11 @@ def patient_config(base: dict, care: dict, patient: dict) -> dict:
     cfg["lesion"] = lesion
     cfg = deep_merge(cfg, {k: patient[k] for k in ("therapy", "stimulation", "recovery", "corpus_callosum")
                            if k in patient})
+    on_side = {k: v for k, v in damage.items() if k.startswith("L_" if side == "left" else "R_")}
+    epicentre = max(on_side, key=on_side.get)
+    job = ensure_job(cfg, side, epicentre, care)
     if cfg["therapy"].get("function", "auto") == "auto":
-        cfg["therapy"]["function"] = _auto_function(cfg, side, damage)
+        cfg["therapy"]["function"] = job
     cfg["patient"] = {"name": patient.get("name", "patient"), "disorder": disorder,
                       "biomarkers": patient.get("biomarkers", {})}
     return cfg

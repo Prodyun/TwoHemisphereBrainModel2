@@ -54,6 +54,7 @@ class PracticeStep:
     mental_reps: float
     session_reps: float          # repetitions so far today (for saturation)
     pattern: np.ndarray | None = None  # the practised movement's pattern (for Hebbian "use")
+    bci_fired: bool = False             # the BCI decoder detected "trying" and gave feedback
 
 
 def _modes(cfg: dict) -> tuple[list[str], set[str]]:
@@ -195,12 +196,14 @@ class Therapy:
         scale = self._scale(main)
         inp = self.strength * scale * pattern
         boost = 1.0
+        fired = False
         if main == "physical":
             inp = inp + self.feedback * np.abs(pattern) * self.feedback_mask
         elif main == "bci":
             watched = self.trained.x if self.bci_decoder == "damaged" or healthy_x is None else healthy_x
             detected = float(np.mean(np.abs(watched[self.regions]))) > self.bci_threshold
             fires = detected if self.bci_contingent else self.rng.random() < self.bci_random_rate
+            fired = bool(fires)
             if fires:  # e.g. muscle stimulation moves the hand: feedback reaches the touch areas
                 inp = inp + self.feedback * np.abs(pattern) * self.feedback_mask
                 if self.bci_contingent:
@@ -210,7 +213,7 @@ class Therapy:
         reps = self.reps_per_step
         self._session_reps += reps
         physical = reps if main == "physical" else 0.0
-        return PracticeStep(inp, scale, boost, 1, physical, reps - physical, self._session_reps, pattern)
+        return PracticeStep(inp, scale, boost, 1, physical, reps - physical, self._session_reps, pattern, fired)
 
 
 class Stimulation:

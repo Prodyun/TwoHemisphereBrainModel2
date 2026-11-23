@@ -62,3 +62,7 @@ Two-hemisphere (left/right) brain model, simulated with AI, in Python.
 - Patient biomarkers and genes personalise the factors.
 - Real lesions come from ATLAS. The owner signs the data-use agreement and downloads the files; never commit them.
 - The approved phased plan is kept in Claude's plan file. Work phase by phase, commit, then explain in plain language.
+- 2026-11-23: POC first. The AI Help Predictor (trained on simulated patients, tested on held-out areas) and the
+  live explorer (click any area -> AI chance + helpers + why; simulate AI plan vs standard care vs split; Beat the AI)
+  are built. Next: live EEG BCI (OpenBCI Ganglion recommended; the owner's NeuroSky is single-channel and unsuitable),
+  then the Brain SWAT phases (detect, contain, validation against trials, ATLAS, biomarkers, poster).

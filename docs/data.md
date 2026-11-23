@@ -59,3 +59,22 @@ Put them in `data/raw/hcp/<subject id>/`, then:
 python scripts/process_fmri.py    # -> data/processed/subject_fc.npz
 python scripts/fit_to_fmri.py     # fits the model to the group and to each subject
 ```
+
+## 3. Real properties of each area, for the AI Help Predictor (no login)
+
+```powershell
+python scripts/fetch_area_data.py      # ~122 MB into data/raw/area/ (pinned versions)
+python scripts/prepare_area_atlas.py   # -> data/processed/area_atlas.npz (one row per area)
+```
+
+| Data | Source | Licence / use |
+|---|---|---|
+| Gene activity per Glasser area: plasticity genes BDNF, GAP43, NTRK2, CAMK2A, GRIN2B, SYP; vulnerability genes MAPT, SNCA, TARDBP, APOE | Allen Human Brain Atlas (Hawrylycz 2012), Glasser-360 version from enigma-extra (Larivière 2021) | open; cite both |
+| Network of each area (12 networks) | Cole-Anticevic Brain-wide Network Partition (Ji et al. 2019, *NeuroImage*) | non-commercial licence |
+| Glasser 2016's 22 cortical sections, area volume | HCP-MMP1 region list (D. Patterson, Univ. Arizona) | no licence stated: cite, don't redistribute |
+| Volumetric Glasser atlas (MNI) | Horn 2016, figshare 3501911 | CC BY 4.0 |
+| Receptor/transporter PET densities: VAChT, NET, D1, D2, DAT, GABA-A, NMDA | Hansen et al. 2022, *Nat Neurosci* (netneurolab) | cite; check each map's licence |
+
+Notes:
+- 63 areas have a missing gene value (the Allen atlas did not sample every area), and 6 have a missing receptor value. The AI model handles missing values.
+- The PET maps were made on slightly different MNI templates than the atlas. At 1–3 mm this mismatch is small compared with an area.
