@@ -19,7 +19,7 @@ from .planning import healthy_for, variant, with_targets
 from .simulation import run_simulation
 from .visualization.care_view import care_payload
 
-DISORDERS = ("stroke", "tumor")
+DISORDERS = ("stroke", "tumor", "spreading")
 PRESETS = {
     "left_6d_stroke": "Motor stroke (left 6d, right hand)",
     "left_broca_stroke": "Language stroke (left Broca)",
@@ -44,14 +44,17 @@ class CareService:
                 raise ValueError(f"unknown preset {preset}")
             patient = load_patient(Path("configs/patients") / f"{preset}.yaml")
         else:
-            patient = patient_from_area(area, float(severity), disorder)
+            # a spreading disease starts in the clicked area only; a stroke or tumour also hits neighbours
+            patient = patient_from_area(area, float(severity), disorder, neighbors=0 if disorder == "spreading" else 4)
         return patient_config(self.base, self.care, patient), patient
 
     # ---------- the AI's answer ----------
     def predict(self, area: str, severity: float = 0.9, disorder: str = "stroke") -> dict:
         if self.predictor is not None:
-            out = self.predictor.predict(area, float(severity), disorder)
-            out["source"] = "AI model (trained on simulated patients, tested on unseen areas)"
+            out = self.predictor.predict(area, float(severity), "stroke" if disorder == "spreading" else disorder)
+            out["disorder"] = disorder
+            out["source"] = ("AI model (trained on simulated patients, tested on unseen areas)" if disorder != "spreading"
+                             else "AI model trained on stroke and tumour: for a spreading disease this is an estimate")
             if out.get("helpers") is None:
                 out["helpers"] = self.trace_helpers(area, severity, disorder)
             return out

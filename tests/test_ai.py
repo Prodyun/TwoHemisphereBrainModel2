@@ -84,6 +84,12 @@ def test_care_payload_has_every_plan_and_the_therapy_timeline(fake_file):
     assert max(rec["practice"]) == 1 and max(rec["stimulating"]) == 1 and rec["targets"][0][3] == "R_44"
     assert p["conditions"]["split"]["strength"] == 0.0
     assert p["meta"]["care"]["helpers"][0]["area"] == "R_44"
+    # the help signal on each pathway, frame by frame: present when connected, zero when cut
+    arcs = p["meta"]["care"]["arcs"]
+    assert arcs and arcs[0][0] == "right"
+    flux = np.array(p["conditions"]["recommended"]["help_flux"])
+    assert flux.shape == (n, len(arcs)) and flux.max() > 0 and flux.max() <= 1.0
+    assert np.array(p["conditions"]["split"]["help_flux"]).max() == 0
 
 
 # ---------- the model (small synthetic data with a known rule) ----------

@@ -89,6 +89,25 @@ def test_tumour_grows_gradually_and_presses_on_neighbours(fake_file):
     assert neighbours.max() == pytest.approx(0.3 * cfg["lesion"]["max_damage"])
 
 
+def test_stroke_penumbra_dies_off_over_the_set_steps(fake_file):
+    cfg = care_config(fake_file, lesion={"penumbra_steps": 40, "penumbra_start": 0.3}, recovery={"enabled": False},
+                      therapy={"mode": "none"})
+    run = run_simulation(cfg)
+    brain = Brain(cfg)
+    core, ring = brain.left.area_index("44"), brain.left.area_index("45")
+    start = cfg["lesion"]["start_step"]
+    assert run["left_damage"][start, core] == pytest.approx(0.9)          # the core is hit at once
+    assert run["left_damage"][start, ring] == pytest.approx(0.3 * 0.8)    # the ring starts at 30%
+    assert run["left_damage"][start + 20, ring] < run["left_damage"][start + 40, ring]
+    assert run["left_damage"][-1, ring] == pytest.approx(0.8)              # ...and is lost by the end
+
+
+def test_stroke_without_penumbra_is_unchanged(fake_file):
+    run = run_simulation(care_config(fake_file, recovery={"enabled": False}, therapy={"mode": "none"}))
+    start = care_config(fake_file)["lesion"]["start_step"]
+    assert np.allclose(run["left_damage"][start], run["left_damage"][-1])
+
+
 # ---------- healing ----------
 
 def test_window_is_zero_before_injury_and_follows_the_points():

@@ -63,9 +63,9 @@ the poster.
 
 | Disorder | Behaviour | Factors |
 |---|---|---|
-| stroke | the damage map appears at once and does not spread | — |
+| stroke | the core is hit at once; the surrounding at-risk tissue (penumbra) starts at `penumbra_start` (30%) of its final damage and dies off over `penumbra_days`; no spread along the wiring | `penumbra_days` 5, `penumbra_start` 0.3 (assumption; real penumbra is lost over hours to days) |
 | tumor | the centre grows to max over `growth_steps`, with pressure on neighbours | `growth_steps` 480 (20 days), `pressure` 0.3 |
-| spreading | travels along the wiring (network Fisher-Kolmogorov) | `transport` 0.002, `growth` 0.0105 |
+| spreading | starts in the clicked area and travels along the wiring (network Fisher-Kolmogorov) | care runs: `transport` 0.001, `growth` 0.0016 (~12 areas by day 60, ~60 by day 120); the 960-step experiment keeps 0.002 / 0.0105 |
 
 Still to come in later phases: containment, the detection markers, patient biomarkers, the
 area-atlas genes and receptors, and the brain-reserve scaling.

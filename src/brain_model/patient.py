@@ -113,6 +113,8 @@ def patient_config(base: dict, care: dict, patient: dict) -> dict:
     lesion = {**cfg["lesion"], "hemisphere": side, "region": None, "damage_map": damage,
               "start_step": onset, "cross_spread": 0.0}
     lesion.update(care["disorders"][disorder])
+    if "penumbra_days" in lesion:   # days -> model steps
+        lesion["penumbra_steps"] = int(lesion.pop("penumbra_days") * spd)
     cfg["lesion"] = lesion
     cfg = deep_merge(cfg, {k: patient[k] for k in ("therapy", "stimulation", "recovery", "corpus_callosum")
                            if k in patient})

@@ -11,7 +11,10 @@
         another, by how far they are along the wiring from the start: a travelling front.
       model "simple": the earlier rule, growth = spread_rate * (1-d) * (d + W @ d).
   * stroke:    sudden damage to the starting area and its most strongly connected neighbours,
-               which then does NOT spread.
+               which then does NOT spread. With `penumbra_steps` > 0 (and a damage map) the core is
+               hit at once, but the surrounding areas (the "penumbra", tissue at risk) start at
+               `penumbra_start` x their final damage and die off gradually over penumbra_steps, as
+               the at-risk ring does in the first days after a real stroke unless blood flow returns.
   * tumor:     a slow-growing mass. Damage at the starting area climbs steadily from
                `initial_damage` to `max_damage` over `growth_steps`; its most strongly linked
                neighbours feel a weaker "pressure" (`pressure` x the centre's damage). No travelling
@@ -60,6 +63,8 @@ class Lesion:
         self.growth_steps = cfg.get("growth_steps", 600)
         self.pressure = cfg.get("pressure", 0.3)
         self.pressure_neighbors = cfg.get("pressure_neighbors", 4)
+        self.penumbra_steps = int(cfg.get("penumbra_steps", 0))
+        self.penumbra_start = float(cfg.get("penumbra_start", 0.3))
         self.damage_map = self._read_map(cfg.get("damage_map"))
         if self.damage_map:
             on_target = self.damage_map[target.name]
@@ -99,11 +104,16 @@ class Lesion:
         s = W.sum(axis=1, keepdims=True)
         return np.divide(W, s, out=np.zeros_like(W), where=s > 0)
 
+    def _penumbra(self) -> bool:
+        return self.kind == "stroke" and self.penumbra_steps > 0 and bool(self.damage_map)
+
     def _start(self) -> None:
         if self.damage_map:
             for hemi in (self.target, self.other):
                 for i, value in self.damage_map[hemi.name].items():
-                    hemi.damage[i] = max(hemi.damage[i], min(value, self.max_damage))
+                    core = hemi is self.target and i == self.center_region
+                    share = 1.0 if core or not self._penumbra() else self.penumbra_start
+                    hemi.damage[i] = max(hemi.damage[i], min(share * value, self.max_damage))
             return
         d = self.target.damage
         d[self.center_region] = self.initial_damage
@@ -118,7 +128,9 @@ class Lesion:
         if t == self.start_step:
             self._start()
         if self.kind == "stroke":
-            return  # a stroke hits once and does not spread
+            if self._penumbra() and t <= self.start_step + self.penumbra_steps:
+                self._grow_penumbra(t)
+            return  # a stroke does not spread along the wiring
         if self.kind == "tumor":
             self._grow_tumor(t)
             return
@@ -134,6 +146,16 @@ class Lesion:
                 change = self.spread_rate * (1 - d) * (d + hemi.W @ d)
                 leak = self.cross_spread * self.spread_rate * (1 - d) * leak_in
             hemi.damage = np.clip(d + change + leak, 0.0, self.max_damage)
+
+    def _grow_penumbra(self, t: int) -> None:
+        """The at-risk ring around the core dies off gradually (never undoes healing elsewhere)."""
+        frac = min(1.0, (t - self.start_step) / self.penumbra_steps)
+        share = self.penumbra_start + (1.0 - self.penumbra_start) * frac
+        for hemi in (self.target, self.other):
+            for i, value in self.damage_map[hemi.name].items():
+                if hemi is self.target and i == self.center_region:
+                    continue
+                hemi.damage[i] = max(hemi.damage[i], min(share * value, self.max_damage))
 
     def _grow_tumor(self, t: int) -> None:
         """Slow growth at the centre plus pressure on its strongest neighbours (no front)."""

@@ -76,7 +76,33 @@ def care_payload(cfg: dict, plans: list[tuple[str, str, dict]], prediction: dict
             help_list.append({"side": healthy_side, "index": names[healthy_side].index(h["area"]), "area": h["area"],
                               "share": h["share"], "route": h["route"],
                               "reaches": [names[side].index(r) for r in h.get("reaches", []) if r in names[side]]})
+    # The help signal on each pathway (helper -> damaged area), frame by frame, so the viewer can show
+    # it travelling: gain into the receiver x callosal route weight x the helper's output that moves
+    # with the practised pattern. Two-step routes have no direct fibre, so they use the helper's whole
+    # route row into the damaged side (its strongest receiver) as the carrier.
+    route = b.callosum.into_left_wiring if side == "left" else b.callosum.into_right_wiring
+    n_areas = len(names[side])
+    R = np.eye(n_areas) if route is None else route
+    arcs = [[hp["index"], r, hp["share"]] for hp in help_list[:6] for r in hp["reaches"][:2]]
+    raw = {}
+    for key, _, _ in plans:
+        run = results[key]["run"]
+        sent = (1.0 - run[f"{healthy_side}_damage"]) * run[healthy_side]
+        gain = run[f"gain_into_{side}"]
+        pattern = run[f"{side}_task:{job}"]
+        flux = np.zeros((len(sent), len(arcs)))
+        for a, (j, i, _) in enumerate(arcs):
+            weight = R[i, j] if R[i, j] > 0 else R[:, j].max()
+            flux[:, a] = gain[:, i] * weight * np.maximum(sent[:, j] * pattern[:, i], 0.0)
+        raw[key] = flux
+    top = max([f.max() for f in raw.values()] + [1e-9])
+    for key, flux in raw.items():
+        frames = [(flux[f * stride:(f + 1) * stride].max(axis=0) / top if len(flux[f * stride:(f + 1) * stride])
+                   else np.zeros(len(arcs))) for f in range(n_frames)]
+        payload["conditions"][key]["help_flux"] = [[round(float(v), 3) for v in row] for row in frames]
     payload["meta"]["care"] = {
+        "arcs": [[healthy_side, int(j), int(i), float(s)] for j, i, s in arcs],
+        "penumbra_days": main["lesion"].get("penumbra_steps", 0) / steps_per_day(main),
         "goal": main["care"]["goal"], "steps_per_day": steps_per_day(main), "onset": main["lesion"]["start_step"],
         "week_steps": int(main["care"]["week_days"] * steps_per_day(main)), "job": job, "job_regions": regions,
         "order": [k for k, _, _ in plans], "patient": patient or {}, "prediction": prediction, "helpers": help_list,

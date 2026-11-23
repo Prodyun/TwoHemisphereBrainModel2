@@ -37,7 +37,8 @@
   .tag .state { display: block; margin-top: 6px; font-variant-numeric: tabular-nums; color: var(--text); }
   .tag.right { left: auto; right: 16px; text-align: right; top: 48px; }
   .panel button.reset { position: absolute; top: 10px; right: 12px; }
-  .bridge { position: relative; }
+  .bridge { position: relative; background: linear-gradient(90deg, transparent, rgba(255,192,58,0.05), transparent); }
+  #link-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
   .bridge canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
   .bridge .cap { position: absolute; bottom: 10px; width: 100%; text-align: center;
     font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
@@ -124,6 +125,7 @@
       <button class="reset" data-reset="left">Reset view</button>
     </section>
     <div class="bridge" aria-hidden="true"><canvas id="bridge"></canvas><div class="cap" id="bridge-cap">Corpus callosum</div></div>
+    <canvas id="link-overlay" aria-hidden="true"></canvas>
     <section class="panel" id="panel-right" aria-label="Right hemisphere 3D view">
       <div class="tag"><b>Right hemisphere</b><span id="spec-right"></span><span class="state" id="state-right"></span></div>
       <button class="reset" data-reset="right">Reset view</button>
@@ -530,23 +532,146 @@ const ccColors = new Float32Array(3 * ccLinePts.length);
 ccGeo.setAttribute('color', new THREE.BufferAttribute(ccColors, 3));
 togScene.add(new THREE.LineSegments(ccGeo, new THREE.LineBasicMaterial({
   vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
-// AI help pathways: gold arcs from each helper area to the damaged areas it reaches
-const arcGroup = new THREE.Group(); togScene.add(arcGroup);
-function buildArcs() {
-  for (const o of [...arcGroup.children]) { arcGroup.remove(o); o.geometry.dispose(); o.material.dispose(); }
-  if (!M.care) return;
-  const H = togHemis[healthySide], Dm = togHemis[damaged];
-  for (const hp of (M.care.helpers || []).slice(0, 6)) {
-    for (const r of hp.reaches.slice(0, 2)) {
-      const a = H.centers[hp.index].clone().add(H.group.position), b = Dm.centers[r].clone().add(Dm.group.position);
-      const pts = bezier(a, b, new THREE.Vector3(0, 0.18 + 0.4 * Math.abs(a.x - b.x), 0), 30);
-      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({
-        color: 0xffc03a, transparent: true, opacity: 0.35 + 0.65 * Math.min(1, hp.share * 4), depthTest: false, blending: THREE.AdditiveBlending }));
-      line.renderOrder = 7; arcGroup.add(line);
-    }
+// ---------- pathways that carry help from the healthy side into the damaged side ----------
+// Patient care: the AI's helper -> damaged-area pathways with their help signal per frame (help_flux).
+// Original disorder mode: the 20 busiest callosal fibres with their signal toward the damaged side.
+// Each pathway: {hi: healthy area, di: damaged area, share, label}; pathFlux(f, a) = signal 0..1 now.
+let PATHS = [];
+function buildPaths() {
+  PATHS = [];
+  if (M.care && M.care.arcs) {
+    for (const [, hi, di, share] of M.care.arcs)
+      PATHS.push({ hi, di, share, label: `${areaName(healthySide, hi)} → ${areaName(damaged, di)}` });
+    return;
   }
+  const c = D.conditions[condKeys()[0]], dir = damaged === 'left' ? 'r2l' : 'l2r';
+  const busy = CC.map(([li, rj], l) => ({ l, li, rj, m: c[dir].reduce((s, row) => s + row[l], 0) }))
+    .sort((a, b) => b.m - a.m).slice(0, 20);
+  const top = Math.max(1e-9, busy[0] ? busy[0].m : 1);
+  for (const b of busy) PATHS.push({ l: b.l, hi: damaged === 'left' ? b.rj : b.li, di: damaged === 'left' ? b.li : b.rj,
+    share: 0.25 * b.m / top, label: '' });
+}
+function pathFlux(f, a) {
+  const c = D.conditions[state.cond];
+  if (condCut(state.cond)) return 0;
+  if (M.care) return c.help_flux ? c.help_flux[f][a] : 0;
+  return clamp01(c[damaged === 'left' ? 'r2l' : 'l2r'][f][PATHS[a].l] / M.max_flux);
+}
+buildPaths();
+
+// Together view: gold arcs, with comets travelling from helper to damaged area; receivers flash
+const arcGroup = new THREE.Group(); togScene.add(arcGroup);
+let ARC_CURVES = [], COMETS = [];
+const cometGeo = new THREE.BufferGeometry();
+const cometPoints = new THREE.Points(cometGeo, new THREE.PointsMaterial({ size: 0.075, vertexColors: true, transparent: true,
+  blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false }));
+cometPoints.renderOrder = 8;
+togScene.add(cometPoints);
+const recvGroup = new THREE.Group(); togScene.add(recvGroup);
+function buildArcs() {
+  for (const o of [...arcGroup.children, ...recvGroup.children]) { o.parent.remove(o); o.geometry.dispose(); o.material.dispose(); }
+  ARC_CURVES = []; COMETS = [];
+  if (!M.care) { cometGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3)); return; }
+  const H = togHemis[healthySide], Dm = togHemis[damaged];
+  PATHS.forEach((pth, a) => {
+    const from = H.centers[pth.hi].clone().add(H.group.position), to = Dm.centers[pth.di].clone().add(Dm.group.position);
+    const pts = bezier(from, to, new THREE.Vector3(0, 0.18 + 0.4 * Math.abs(from.x - to.x), 0), 40);
+    ARC_CURVES.push(pts);
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({
+      color: 0xffc03a, transparent: true, opacity: 0.25, depthTest: false, blending: THREE.AdditiveBlending }));
+    line.renderOrder = 7; line.userData.a = a; arcGroup.add(line);
+    for (let k = 0; k < 4; k++) COMETS.push({ a, t: (k + Math.random()) / 4 });
+  });
+  const receivers = [...new Set(PATHS.map(p => p.di))];
+  for (const di of receivers) {
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.035, 16, 12), new THREE.MeshBasicMaterial({
+      color: 0xffe08a, transparent: true, opacity: 0, depthTest: false, blending: THREE.AdditiveBlending }));
+    ball.position.copy(Dm.centers[di].clone().add(Dm.group.position)); ball.renderOrder = 9; ball.userData.di = di;
+    recvGroup.add(ball);
+  }
+  cometGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3 * COMETS.length), 3));
+  cometGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(3 * COMETS.length), 3));
 }
 buildArcs();
+function moveComets(dt) {
+  if (!M.care || !COMETS.length) return;
+  const f = state.frame, pos = cometGeo.attributes.position.array, col = cometGeo.attributes.color.array;
+  const pace = state.playing ? state.speed : 0.3;
+  arcGroup.children.forEach(line => { const s = pathFlux(f, line.userData.a); line.material.opacity = condCut(state.cond) ? 0.06 : 0.15 + 0.6 * s; });
+  COMETS.forEach((c, k) => {
+    const s = pathFlux(f, c.a), pts = ARC_CURVES[c.a];
+    c.t += dt * (0.12 + 0.9 * s) * pace; if (c.t > 1) c.t -= 1;
+    const x = c.t * (pts.length - 1), i = Math.min(pts.length - 2, Math.floor(x)), fr = x - i;
+    pos[3 * k] = pts[i].x + (pts[i + 1].x - pts[i].x) * fr; pos[3 * k + 1] = pts[i].y + (pts[i + 1].y - pts[i].y) * fr; pos[3 * k + 2] = pts[i].z + (pts[i + 1].z - pts[i].z) * fr;
+    const b = s < 0.03 ? 0 : 0.35 + 0.65 * s;
+    col[3 * k] = 1.0 * b; col[3 * k + 1] = 0.82 * b; col[3 * k + 2] = 0.35 * b;
+  });
+  cometGeo.attributes.position.needsUpdate = true; cometGeo.attributes.color.needsUpdate = true;
+  recvGroup.children.forEach(ball => {       // a damaged area glows while help is arriving
+    let s = 0; PATHS.forEach((p, a) => { if (p.di === ball.userData.di) s = Math.max(s, pathFlux(f, a)); });
+    ball.material.opacity = 0.75 * s; ball.scale.setScalar(0.8 + 0.9 * s);
+  });
+}
+
+// Separate view: pathways drawn across BOTH panels, from the helper area on the healthy brain to the
+// damaged area on the other brain; they follow each brain as it is rotated
+const overlay = document.getElementById('link-overlay'), octx = overlay.getContext('2d');
+const _v = new THREE.Vector3();
+let overlayT = 0;
+function screenOf(view, point) {           // 3D point in a panel -> overlay pixel coordinates
+  _v.copy(point).project(view.camera);
+  const r = view.el.getBoundingClientRect(), o = overlay.getBoundingClientRect();
+  return [r.left - o.left + (_v.x + 1) / 2 * r.width, r.top - o.top + (1 - _v.y) / 2 * r.height, _v.z < 1];
+}
+function drawOverlay(dt) {
+  const w = overlay.clientWidth, h = overlay.clientHeight, dpr = Math.min(devicePixelRatio, 2);
+  if (!w || !h) return;
+  if (overlay.width !== Math.round(w * dpr) || overlay.height !== Math.round(h * dpr)) { overlay.width = Math.round(w * dpr); overlay.height = Math.round(h * dpr); }
+  octx.setTransform(dpr, 0, 0, dpr, 0, 0); octx.clearRect(0, 0, w, h);
+  if (!PATHS.length) return;
+  overlayT += dt * (state.playing ? state.speed : 0.3);
+  const f = state.frame, cut = condCut(state.cond);
+  const HV = VIEWS[healthySide], DV = VIEWS[damaged];
+  const labelled = new Set();
+  octx.font = '600 11px system-ui, sans-serif'; octx.textBaseline = 'middle';
+  PATHS.forEach((pth, a) => {
+    const [x1, y1] = screenOf(HV, HV.hemis[0].centers[pth.hi]), [x2, y2] = screenOf(DV, DV.hemis[0].centers[pth.di]);
+    const mx = (x1 + x2) / 2, my = Math.min(y1, y2) - 40 - 0.08 * Math.abs(x1 - x2);
+    const s = pathFlux(f, a), width = 1 + 10 * Math.min(1, pth.share * 3);
+    octx.beginPath(); octx.moveTo(x1, y1); octx.quadraticCurveTo(mx, my, x2, y2);
+    if (cut) { octx.setLineDash([5, 6]); octx.strokeStyle = 'rgba(224,48,63,0.55)'; octx.lineWidth = 1.5; }
+    else { octx.setLineDash([]); octx.strokeStyle = `rgba(255,192,58,${0.12 + 0.45 * s})`; octx.lineWidth = width; }
+    octx.stroke(); octx.setLineDash([]);
+    if (!cut && s > 0.03) {                // comets: help travelling toward the damaged area
+      const n = 3;
+      for (let k = 0; k < n; k++) {
+        const t = ((overlayT * (0.15 + 0.8 * s) + k / n + a * 0.13) % 1), u = 1 - t;
+        const px = u * u * x1 + 2 * u * t * mx + t * t * x2, py = u * u * y1 + 2 * u * t * my + t * t * y2;
+        const g = octx.createRadialGradient(px, py, 0, px, py, 4 + 5 * s);
+        g.addColorStop(0, `rgba(255,236,170,${0.5 + 0.5 * s})`); g.addColorStop(1, 'rgba(255,192,58,0)');
+        octx.fillStyle = g; octx.beginPath(); octx.arc(px, py, 4 + 5 * s, 0, 6.283); octx.fill();
+      }
+      const g2 = octx.createRadialGradient(x2, y2, 0, x2, y2, 6 + 10 * s);   // receiver glow
+      g2.addColorStop(0, `rgba(255,224,138,${0.7 * s})`); g2.addColorStop(1, 'rgba(255,224,138,0)');
+      octx.fillStyle = g2; octx.beginPath(); octx.arc(x2, y2, 6 + 10 * s, 0, 6.283); octx.fill();
+    }
+    if (M.care && pth.label && !labelled.has(pth.hi) && labelled.size < 4) {
+      labelled.add(pth.hi);
+      const txt = `${pth.label}  ${Math.round(pth.share * 100)}%`;
+      const t = 0.3 + 0.13 * (labelled.size - 1), u = 1 - t;            // a different point on each curve
+      const px = u * u * x1 + 2 * u * t * mx + t * t * x2, py = u * u * y1 + 2 * u * t * my + t * t * y2;
+      const tw = octx.measureText(txt).width, lx = px - tw / 2, ly = py - 10;
+      octx.fillStyle = 'rgba(8,11,16,0.8)'; octx.fillRect(lx - 4, ly - 8, tw + 8, 16);
+      octx.fillStyle = cut ? '#ff7a7a' : '#ffd27a'; octx.fillText(txt, lx, ly);
+    }
+  });
+  if (cut) {
+    const cx = w / 2, cy = h * 0.45;
+    octx.fillStyle = 'rgba(8,11,16,0.85)'; octx.fillRect(cx - 105, cy - 14, 210, 28);
+    octx.fillStyle = '#ff7a7a'; octx.textAlign = 'center'; octx.font = '700 13px system-ui, sans-serif';
+    octx.fillText('✕  callosum cut: no help', cx, cy); octx.textAlign = 'left';
+  }
+}
 // pulses: 2 per direction per fibre; they travel in the direction the signal goes
 const PULSES = [];
 CC.forEach((_, l) => { for (const dir of ['r2l', 'l2r']) for (let k = 0; k < 2; k++) PULSES.push({ l, dir, t: (k + Math.random()) / 2 }); });
@@ -561,6 +686,7 @@ const dot = (() => {   // round, soft-edged pulse instead of a square
   g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
   return new THREE.CanvasTexture(cv);
 })();
+cometPoints.material.map = dot; cometPoints.material.needsUpdate = true;
 const pulsePoints = new THREE.Points(pulseGeo, new THREE.PointsMaterial({
   size: 0.07, map: dot, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
 togScene.add(pulsePoints);
@@ -688,7 +814,7 @@ function applyRun(data) {               // show a new run without reloading the 
   damaged = M.damaged; healthySide = damaged === 'left' ? 'right' : 'left';
   towardDamaged = damaged === 'left' ? 'r2l' : 'l2r';
   computeArrival(); computeMaxHelp(); setCaptions(); updateLegend(); buildCondButtons();
-  HEMIS.forEach(placeMarker); HEMIS.forEach(placeHelpers); buildArcs(); renderAI();
+  HEMIS.forEach(placeMarker); HEMIS.forEach(placeHelpers); buildPaths(); buildArcs(); renderAI();
   PICK.sel = null; pickControls.hidden = true;
   pickText.textContent = 'Click another area to try a different start.';
   setFrame(0); setPlaying(true);
@@ -704,6 +830,14 @@ function updateBanner(f) {
   if (!M.care) { banner.hidden = true; return; }
   const c = D.conditions[state.cond], C = M.care, day = (f * M.stride - C.onset) / C.steps_per_day;
   const mode = c.mode || '', parts = [];
+  const P = C.patient || {}, where = (P.epicentre || '').replace(/^[LR]_/, '');
+  const reached = c[damaged + '_damage'][f].filter(d => d > 0.1 * SC).length;
+  let phase = '';
+  if (day >= 0 && P.disorder === 'stroke' && day < (C.penumbra_days || 0))
+    phase = `<span class="z">Day ${Math.floor(day) + 1}: the at-risk ring around ${esc(where)} is dying off (penumbra)</span>`;
+  else if (day >= 0 && P.disorder === 'tumor') phase = `<span class="z">Tumour at ${esc(where)} growing · ${reached} areas affected</span>`;
+  else if (day >= 0 && P.disorder === 'spreading') phase = `<span class="z">Disease spreading from ${esc(where)} along the wiring · ${reached} areas reached</span>`;
+  if (phase) parts.push(phase);
   if (day < 0) parts.push('<span class="m">Healthy brain · the injury happens on day 1</span>');
   else if (c.practice[f] === 1) {
     const how = mode.includes('bci') ? 'BCI: <b>imagining</b> the movement (no physical effort)'
@@ -715,6 +849,7 @@ function updateBanner(f) {
     if (c.stimulating[f] > 0) parts.push(`<span class="z">⚡ stimulating ${(c.targets || []).map(t => t[3]).join(', ')}</span>`);
   } else if (c.practice[f] === 2) parts.push('<span class="n">☾ Night: sleep replay of today\'s practice</span>');
   else parts.push('<span class="m">Between sessions · the healthy side keeps sending help</span>');
+  if (!condCut(state.cond) && PATHS.length) parts.push('<span class="m">gold comets = help travelling from the ' + healthySide + ' side into the damage</span>');
   const reps = `Repetitions: <b>${Math.round(c.reps_physical[f]).toLocaleString()}</b> physical · <b>${Math.round(c.reps_mental[f]).toLocaleString()}</b> mental`;
   banner.innerHTML = `<b>${condLabel(state.cond)}</b><br>${parts.join(' · ')}<br>${reps}`;
   banner.hidden = false;
@@ -807,7 +942,7 @@ function renderAI() {
     h += `<h3>Try it</h3><div class="ctl">
       <span>Damage</span><span>${esc(area || 'click an area')}</span>
       <span>Severity</span><input type="range" min="0.3" max="0.95" step="0.05" value="${AI.severity}" id="ai-sev">
-      <span>Disorder</span><select id="ai-dis"><option value="stroke">stroke</option><option value="tumor">tumour</option></select>
+      <span>Disorder</span><select id="ai-dis"><option value="stroke">stroke</option><option value="tumor">tumour</option><option value="spreading">spreading disease</option></select>
       <span>Start day</span><input type="number" min="1" max="100" value="${AI.startDay}" id="ai-day" style="width:70px">
       <span>Preset</span><select id="ai-preset"><option value="">(the clicked area)</option>
         <option value="left_6d_stroke">Motor stroke (left 6d)</option><option value="left_broca_stroke">Language stroke (left Broca)</option>
@@ -849,8 +984,9 @@ function updateText(f) {
     const d0 = mean(hit.map(i => c[damaged + '_damage'][0 + Math.ceil(M.care.onset / M.stride) + 1]?.[i] ?? 0)) / SC;
     const dNow = mean(hit.map(i => c[damaged + '_damage'][f][i])) / SC;
     const wk = careWeek(f), weekly = c.weekly || [], fn = wk >= 0 && wk < weekly.length ? weekly[wk] : null;
-    const tD = `Damaged areas: ${pct(dNow)} damage${wk >= 0 && d0 > 0 ? ` (was ${pct(d0)})` : ''} · trained job this week: ${pct(fn)}`;
-    const tH = `Healthy side: sending help to ${hit.length} damaged areas`;
+    const tD = `Damaged areas: ${pct(dNow)} damage${wk >= 0 && d0 > 0 ? ` (day 1: ${pct(d0)})` : ''} · trained job this week: ${pct(fn)}`;
+    const nowHit = c[damaged + "_damage"][f].filter(d => d > 0.1 * SC).length;
+    const tH = condCut(state.cond) ? "Healthy side: cut off (no help can cross)" : `Healthy side: sending help to ${nowHit} damaged areas`;
     for (const side of SIDES) {
       const t = side === damaged ? tD : tH;
       document.getElementById('state-' + side).textContent = t;
@@ -894,6 +1030,12 @@ computeMaxHelp();
 function drawBridge(f, dt) {
   const w = bridge.clientWidth, h = bridge.clientHeight, dpr = Math.min(devicePixelRatio, 2);
   if (!w || !h) return;
+  if (PATHS.length) {                     // pathways are drawn on the overlay: keep the strip calm
+    if (bridge.width !== Math.round(w * dpr) || bridge.height !== Math.round(h * dpr)) { bridge.width = Math.round(w * dpr); bridge.height = Math.round(h * dpr); }
+    bctx.setTransform(dpr, 0, 0, dpr, 0, 0); bctx.clearRect(0, 0, w, h);
+    document.getElementById('bridge-cap').textContent = condCut(state.cond) ? 'Callosum cut' : 'Corpus callosum';
+    return;
+  }
   if (bridge.width !== Math.round(w * dpr) || bridge.height !== Math.round(h * dpr)) { bridge.width = Math.round(w * dpr); bridge.height = Math.round(h * dpr); }
   bctx.setTransform(dpr, 0, 0, dpr, 0, 0); bctx.clearRect(0, 0, w, h);
   const vertical = w < h, len = vertical ? w : h, span = vertical ? h : w;
@@ -1048,9 +1190,9 @@ function loop(now) {
     }
   }
   const shown = state.view === 'together' ? ['together'] : SIDES;
-  if (state.view === 'together') movePulses(dt);
+  if (state.view === 'together') { movePulses(dt); moveComets(dt); }
   for (const name of shown) { const v = VIEWS[name]; v.controls.update(); v.renderer.render(v.scene, v.camera); }
-  if (state.view === 'separate') drawBridge(state.frame, dt);
+  if (state.view === 'separate') { drawBridge(state.frame, dt); drawOverlay(dt); }
   requestAnimationFrame(loop);
 }
 // Optional link settings (handy for screenshots), e.g.

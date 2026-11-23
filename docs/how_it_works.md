@@ -39,6 +39,18 @@
    - the damage fading
    - the weekly chart climbing toward the goal
 
+## What you see in the viewer
+
+- **The damage develops over time.** Pick one of three disorders:
+  - **Stroke:** the core is hit at once. The at-risk ring around it (the *penumbra*) dies off over the first 5 days, and the banner says so.
+  - **Tumour:** grows slowly and presses on its neighbours.
+  - **Spreading disease:** starts in the clicked area and travels along the brain's wiring for months. Newly reached areas flash, and the wiring carrying the disease glows orange.
+- **The help travels, and you can see it:**
+  - **Separate view:** gold pathways connect each healthy-side helper area (e.g. R_6a) to the damaged area it reaches (L_6a). They are labelled with each helper's share, and comets flow along them. They follow each brain as you rotate it.
+  - **Together view:** comets travel along gold arcs over the corpus callosum, and the damaged area glows while help arrives.
+  - **Split brain:** the pathways turn into red dashed lines with "callosum cut: no help".
+- Brightness and speed follow the real help signal in the simulation at that moment.
+
 ## The AI model
 
 - **Type:** gradient-boosted decision trees (scikit-learn), a standard, explainable machine-learning method.
