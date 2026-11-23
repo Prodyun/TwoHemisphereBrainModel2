@@ -198,12 +198,50 @@ def run_payload(config: dict, results: dict, summary: dict) -> dict:
     }
 
 
+SECTION_SHORT = {  # Glasser 2016 cortical sections -> short plain names for labels
+    "Primary_Visual": "primary visual", "Early_Visual": "early visual", "Dorsal_Stream_Visual": "visual (where)",
+    "Ventral_Stream_Visual": "visual (what)", "MT+_Complex_and_Neighboring_Visual_Areas": "motion vision",
+    "Somatosensory_and_Motor": "motor / touch", "Paracentral_Lobular_and_Mid_Cingulate": "mid cingulate",
+    "Premotor": "premotor", "Posterior_Opercular": "opercular", "Early_Auditory": "early hearing",
+    "Auditory_Association": "hearing / speech", "Insular_and_Frontal_Opercular": "insula",
+    "Medial_Temporal": "memory (medial temporal)", "Lateral_Temporal": "lateral temporal",
+    "Temporo-Parieto-Occipital_Junction": "TPO junction", "Temporo-Parieto_Occipital_Junction": "TPO junction",
+    "Superior_Parietal": "superior parietal", "Inferior_Parietal": "inferior parietal",
+    "Posterior_Cingulate": "posterior cingulate", "Anterior_Cingulate_and_Medial_Prefrontal": "ant. cingulate",
+    "Orbital_and_Polar_Frontal": "orbitofrontal", "Inferior_Frontal": "inferior frontal",
+    "Dorsolateral_Prefrontal": "DL prefrontal",
+}
+
+
+def area_info(config: dict, atlas_file: str = "data/processed/area_atlas.npz") -> dict | None:
+    """Per side and area: (short description, full description) from the area atlas
+    (Glasser 2016 section + Cole-Anticevic network). None if the atlas has not been built."""
+    path = Path(atlas_file)
+    if (config.get("anatomy") or {}).get("source") != "hcp" or not path.exists():
+        return None
+    a = np.load(path, allow_pickle=False)
+    names = [str(n) for n in a["names"]]
+    out = {}
+    for side in SIDES:
+        prefix = "L_" if side == "left" else "R_"
+        rows = []
+        for nm in (n for n in names if n.startswith(prefix)):
+            i = names.index(nm)
+            sec, net = str(a["section"][i]), str(a["network"][i])
+            short = SECTION_SHORT.get(sec, sec.replace("_", " ").lower())
+            full = f"{sec.replace('_', ' ')} · {net} network" if sec else f"{net} network"
+            rows.append([short, full])
+        out[side] = rows
+    return out
+
+
 def viewer_payload(config: dict, results: dict, summary: dict, interactive: bool = False) -> dict:
     """Run data + the 3D meshes. `interactive` = served by scripts/explore.py, so areas can be picked."""
     payload = run_payload(config, results, summary)
     payload["meta"]["interactive"] = interactive
     payload["specialization"] = {s: config[f"{s}_hemisphere"]["specialization"] for s in SIDES}
     payload["mesh"] = {s: _mesh_payload(config, s) for s in SIDES}
+    payload["area_info"] = area_info(config)
     return payload
 
 

@@ -167,6 +167,7 @@
     </div>
     <div class="row">
       <label class="chk"><input type="checkbox" id="show-outlines" checked> Area outlines</label>
+      <label class="chk"><input type="checkbox" id="show-names" checked> Area names</label>
       <label class="chk"><input type="checkbox" id="show-network"> Network view (180 areas + wiring)</label>
       <label class="chk"><input type="checkbox" id="show-functions"> Show functions</label>
     </div>
@@ -214,7 +215,7 @@ const condKeys = () => (M.care && M.care.order) || Object.keys(D.conditions);
 const condLabel = k => (D.conditions[k] && D.conditions[k].label) || COND_LABEL[k] || k;
 const condCut = k => { const c = D.conditions[k]; return (c && c.strength != null) ? c.strength === 0 : (k === 'split' || M.strength === 0); };
 const state = { cond: condKeys()[0], frame: 0, playing: true, speed: 1, colorBy: 'damage', outlines: true,
-  network: false, showFunctions: false, view: 'separate', acc: 0 };
+  network: false, showFunctions: false, view: 'separate', acc: 0, names: true };
 
 const areaName = (side, r) => {
   const names = D.mesh[side].names;
@@ -222,6 +223,8 @@ const areaName = (side, r) => {
   return names[r].replace(/^[LR]_/, '').replace(/_ROI$/, '');
 };
 const nice = (side, r) => { const a = areaName(side, r); return FRIENDLY[a] ? `${a} (${FRIENDLY[a]})` : a; };
+const INFO = (side, r) => (D.area_info && D.area_info[side] && D.area_info[side][r]) || null;   // [short, full]
+const shortName = (side, r) => { const i = INFO(side, r); return i ? `${areaName(side, r)} · ${i[0]}` : nice(side, r); };
 
 document.getElementById('spec-left').textContent = D.specialization.left;
 document.getElementById('spec-right').textContent = D.specialization.right;
@@ -376,10 +379,11 @@ function makeHemi(side, together) {
   selMarker.renderOrder = 9; selMarker.visible = false;
   group.add(selMarker);
   const helperGroup = new THREE.Group(); group.add(helperGroup);
+  const nameGroup = new THREE.Group(); group.add(nameGroup);
   const borderSet = m.border ? new Uint8Array(m.vr.length / m.k) : null;
   if (borderSet) for (const v of m.border) borderSet[v] = 1;
   const h = { side, m, group, geo, colors, surface, nodes, centers, links, linkColors, SEG, marker, selMarker, borderSet,
-    helperGroup, together };
+    helperGroup, together, nameGroup, nameKey: '' };
   placeMarker(h); placeHelpers(h);
   HEMIS.push(h);
   return h;
@@ -388,20 +392,42 @@ function makeHemi(side, together) {
 function placeHelpers(h) {
   for (const child of [...h.helperGroup.children]) { h.helperGroup.remove(child); child.geometry?.dispose(); child.material?.map?.dispose(); child.material?.dispose(); }
   if (!M.care) return;
-  for (const hp of (M.care.helpers || []).slice(0, 6)) {
+  for (const hp of (M.care.helpers || []).slice(0, h.together ? 4 : 6)) {
     if (hp.side !== h.side) continue;
     const r = 0.018 + 0.09 * Math.sqrt(hp.share);
     const ball = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 14), new THREE.MeshBasicMaterial({ color: 0xffc03a, transparent: true, opacity: 0.85, depthTest: false }));
     ball.position.copy(h.centers[hp.index]); ball.renderOrder = 8; ball.userData = { kind: 'helper', base: r, area: hp.index };
     h.helperGroup.add(ball);
-    const label = textSprite(`${hp.area.replace(/^[LR]_/, '')} ${Math.round(hp.share * 100)}%`, '#ffc03a');
+    const label = textSprite(`${shortName(h.side, hp.index)} ${Math.round(hp.share * 100)}%`, '#ffc03a');
     label.position.copy(h.centers[hp.index].clone().add(h.centers[hp.index].clone().normalize().multiplyScalar(0.1)));
-    label.scale.multiplyScalar(0.8); h.helperGroup.add(label);
+    label.scale.multiplyScalar(h.together ? 0.5 : 0.8); h.helperGroup.add(label);
   }
   for (const t of (JUDGE.targets || [])) {
     if (t.side !== h.side) continue;
     const ring = new THREE.Mesh(new THREE.SphereGeometry(0.03, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthTest: false }));
     ring.position.copy(h.centers[t.index]); ring.renderOrder = 9; h.helperGroup.add(ring);
+  }
+}
+// Names on the brain (no hovering needed): the most damaged areas (red), the clicked area (white).
+// Helper areas already carry gold labels. Rebuilt only when the set of labelled areas changes.
+function updateNames(h, f, dmg) {
+  const want = [];
+  if (state.names) {
+    if (h.side === damaged) {
+      const order = [...dmg.keys()].filter(r => dmg[r] > 0.1 * SC && r !== M.lesion_center).sort((a, b) => dmg[b] - dmg[a]);
+      for (const r of order.slice(0, h.together ? 4 : 8)) want.push([r, '#ff9aa2']);   // fewer in the busier Together view
+    }
+    if (PICK.sel && PICK.sel.side === h.side) want.push([PICK.sel.region, '#ffffff']);
+  }
+  const key = want.map(w => w.join(':')).join(',');
+  if (key === h.nameKey) return;
+  h.nameKey = key;
+  for (const o of [...h.nameGroup.children]) { h.nameGroup.remove(o); o.material.map?.dispose(); o.material.dispose(); }
+  for (const [r, color] of want) {
+    const label = textSprite(shortName(h.side, r), color);
+    const c = h.centers[r];
+    label.position.copy(c.clone().add(c.clone().normalize().multiplyScalar(0.07)));
+    label.scale.multiplyScalar(h.together ? 0.42 : 0.62); h.nameGroup.add(label);
   }
 }
 function placeMarker(h) {
@@ -410,7 +436,7 @@ function placeMarker(h) {
   if (side !== damaged || M.lesion_center < 0) { marker.userData.active = false; return; }
   const c = centers[M.lesion_center];
   marker.children[0].position.copy(c);
-  const label = textSprite(`start: ${nice(side, M.lesion_center)}`);
+  const label = textSprite(`start: ${shortName(side, M.lesion_center)}`);
   label.position.copy(c.clone().add(c.clone().normalize().multiplyScalar(0.12)));
   marker.add(label);
   marker.userData.active = true;
@@ -463,6 +489,7 @@ function paintHemi(h, f, rgb, dmg) {
   h.links.visible = any;
   h.marker.visible = h.marker.userData.active && f * M.stride >= M.start_step;
   h.selMarker.visible = !!PICK.sel && PICK.sel.side === h.side;
+  updateNames(h, f, dmg);
   // stimulation flash: while the plan stimulates, the targeted areas glow blue-white
   const cc = D.conditions[state.cond], stim = M.care && cc.stimulating && cc.stimulating[f] > 0;
   const tgt = new Set(((M.care && cc.targets) || []).filter(t => t[0] === h.side).map(t => t[1]));
@@ -541,7 +568,7 @@ function buildPaths() {
   PATHS = [];
   if (M.care && M.care.arcs) {
     for (const [, hi, di, share] of M.care.arcs)
-      PATHS.push({ hi, di, share, label: `${areaName(healthySide, hi)} → ${areaName(damaged, di)}` });
+      PATHS.push({ hi, di, share, label: `${healthySide[0].toUpperCase()} ${areaName(healthySide, hi)} → ${damaged[0].toUpperCase()} ${areaName(damaged, di)}` });
     return;
   }
   const c = D.conditions[condKeys()[0]], dir = damaged === 'left' ? 'r2l' : 'l2r';
@@ -745,7 +772,9 @@ for (const view of Object.values(VIEWS)) {
     else {
       const fi = D.functions[side].region[reg];
       const job = fi >= 0 ? D.functions[side].names[fi].replace(/_/g, ' ') : 'no assigned job';
+      const info = INFO(side, reg);
       tip.innerHTML = `<b>${nice(side, reg)}</b> <span class="m">${side} hemisphere · ${job}</span><br>` +
+        (info ? `<span class="m">${info[1]}</span><br>` : '') +
         `damage ${pct(c[side + '_damage'][f][reg] / SC)} · activity ${(c[side][f][reg] / SC).toFixed(2)}<br>` +
         `input from other side ${(c['into_' + side][f][reg] / SC).toFixed(3)} · sending ${(c['out_' + side][f][reg] / SC).toFixed(3)}` +
         (M.interactive ? '<br><span class="m">click to choose as the start</span>' : '');
@@ -1142,6 +1171,7 @@ playBtn.onclick = () => { if (!state.playing && state.frame >= N - 1) setFrame(0
 document.getElementById('speed').onchange = e => state.speed = +e.target.value;
 document.getElementById('color-by').onchange = e => { state.colorBy = e.target.value; updateLegend(); redraw(); };
 document.getElementById('show-outlines').onchange = e => { state.outlines = e.target.checked; redraw(); };
+document.getElementById('show-names').onchange = e => { state.names = e.target.checked; redraw(); };
 document.getElementById('show-network').onchange = e => { state.network = e.target.checked; redraw(); };
 (() => {
   const legend = document.getElementById('func-legend');

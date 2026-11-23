@@ -132,3 +132,16 @@ def test_predictor_ranks_modes_and_explains():
     assert out["why"] and "fibres" in out["why"][0]
     with pytest.raises(ValueError):
         pred.predict("L_nowhere")
+
+
+def test_area_info_is_optional_and_well_formed(fake_file, tmp_path):
+    from brain_model.visualization.viewer import area_info
+    cfg = care_config(fake_file)
+    assert area_info(cfg, atlas_file=str(tmp_path / "missing.npz")) is None   # no atlas -> no crash, no info
+    names = ["L_" + a for a in ("V1", "44", "45", "FFC", "4", "7PC")] + ["R_" + a for a in ("V1", "44", "45", "FFC", "4", "7PC")]
+    atlas = tmp_path / "atlas.npz"
+    np.savez(atlas, names=np.array(names), section=np.array(["Primary_Visual", "Inferior_Frontal"] * 6),
+             network=np.array(["Visual1", "Language"] * 6))
+    info = area_info(cfg, atlas_file=str(atlas))
+    assert len(info["left"]) == 6 and info["left"][0] == ["primary visual", "Primary Visual · Visual1 network"]
+    assert info["right"][1][0] == "inferior frontal"

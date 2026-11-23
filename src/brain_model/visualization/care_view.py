@@ -118,4 +118,6 @@ def care_page(main_cfg: dict, payload: dict, interactive: bool = False) -> str:
     payload["meta"] = {**payload["meta"], "interactive": interactive}
     payload["specialization"] = {s: main_cfg[f"{s}_hemisphere"].get("specialization", s) for s in ("left", "right")}
     payload["mesh"] = {s: _mesh_payload(main_cfg, s) for s in ("left", "right")}
+    from .viewer import area_info
+    payload["area_info"] = area_info(main_cfg)
     return viewer_html(payload)
