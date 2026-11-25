@@ -97,6 +97,41 @@
     font-size: 13px; text-align: center; max-width: 92%; }
   #banner b { color: #fff; } #banner .p { color: #38e1ff; } #banner .n { color: #b48cff; }
   #banner .z { color: #ffd84a; } #banner .v { color: #5fe08a; } #banner .m { color: var(--muted); }
+  /* Clinic: disease tabs, answer-first tiles, races, badges */
+  #tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+  #tabs button { padding: 3px 9px; font-size: 12.5px; }
+  #tabs button[aria-pressed="true"] { background: #2a2210; border-color: #ffc03a; color: #fff; }
+  #tabs button .ic { margin-right: 4px; }
+  .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 6px 0; }
+  .tile { background: #10141b; border: 1px solid #2a3240; border-radius: 8px; padding: 6px 5px; text-align: center; min-width: 0; }
+  .tile .k { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .tile .v { font-size: 17px; font-weight: 700; color: #fff; line-height: 1.25; overflow-wrap: anywhere; }
+  .tile .v.s { font-size: 13px; }
+  .light { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 4px; vertical-align: 0; }
+  .g { background: #3ddc84; } .a { background: #ffc03a; } .r { background: #ff5a5f; }
+  .say { margin: 4px 0 6px; font-size: 13px; color: #fff; }
+  #ai details { margin-top: 6px; } #ai summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+  #ai summary:hover { color: var(--text); }
+  .card { border: 1px solid #2a3240; border-radius: 8px; padding: 7px 8px; margin-top: 8px; }
+  .card h4 { margin: 0 0 4px; font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: #ffc03a; }
+  .race { display: grid; grid-template-columns: minmax(0, 1fr) 70px 46px; gap: 3px 6px; align-items: center; font-size: 12px; }
+  .race .bar { margin: 0; } .race .bar i.w { background: linear-gradient(90deg, #2f8a4f, #5fe08a); }
+  .race .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge { font-size: 9.5px; border-radius: 4px; padding: 0 4px; margin-left: 4px; vertical-align: 1px; }
+  .b-approved { background: #123d22; color: #5fe08a; } .b-trials { background: #3a2d0c; color: #ffc03a; }
+  .b-model { background: #2a1b40; color: #c9a4ff; } .b-standard { background: #1c222c; color: #aab4c4; }
+  .b-control { background: #1c222c; color: #7d8899; }
+  .acts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin-top: 6px; }
+  .acts button { padding: 5px 4px; font-size: 12px; }
+  .steps { display: grid; grid-template-columns: 22px 1fr; gap: 4px 6px; align-items: center; margin-top: 6px; }
+  .steps .n { width: 20px; height: 20px; border-radius: 50%; background: #1f2a3a; color: #fff; text-align: center; font-size: 12px; line-height: 20px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+  .chip { border: 1px solid #2a3240; border-radius: 10px; padding: 1px 7px; font-size: 11.5px; }
+  .chip.on { border-color: #ff7a1f; color: #fff; }
+  .tip-i { color: var(--muted); cursor: help; border-bottom: 1px dotted var(--muted); }
+  body:not(.clin) .clin-only { display: none; }
+  #ai textarea { width: 100%; min-height: 54px; background: #0b0e13; color: var(--text); border: 1px solid #2a3240; border-radius: 6px; font: 12px ui-monospace, monospace; }
+  #ai input[type=text], #ai input[type=number] { background: #0b0e13; color: var(--text); border: 1px solid #2a3240; border-radius: 6px; padding: 3px 6px; font: inherit; }
   body.booth { font-size: 17px; } body.booth #ai { width: 420px; font-size: 15px; } body.booth #banner { font-size: 17px; }
   @media (max-width: 760px) {
     body { height: auto; }
@@ -114,6 +149,8 @@
     <button data-view="separate" aria-pressed="true">Separate</button>
     <button data-view="together" aria-pressed="false">Together</button>
   </div>
+  <nav id="tabs" aria-label="Diseases"></nav>
+  <label class="chk" id="clin-wrap" hidden><input type="checkbox" id="clin"> Clinician details</label>
   <span class="sub" id="subtitle"></span>
   <span class="hint">Drag to rotate · scroll to zoom · point at an area to see its name</span>
 </header>
@@ -162,6 +199,7 @@
           <option value="input">Input from other side</option>
           <option value="activity">Activity</option>
           <option value="help">Help arriving (patient care)</option>
+          <option value="risk">Spread risk (press “Spread risk”)</option>
         </select>
       </label>
     </div>
@@ -202,7 +240,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const D = JSON.parse(document.getElementById('brain-data').textContent);
 let M = D.meta;
-const N = M.n_frames, SC = M.scale;
+let N = M.n_frames;   // frames in the current run (runs can differ in length)
+const SC = M.scale;
 let damaged = M.damaged, healthySide = damaged === 'left' ? 'right' : 'left';
 const SIDES = ['left', 'right'];
 const FRIENDLY = { '44': "Broca's area", '45': "Broca's area", '55b': 'speech area 55b', 'V1': 'primary visual',
@@ -215,7 +254,8 @@ const condKeys = () => (M.care && M.care.order) || Object.keys(D.conditions);
 const condLabel = k => (D.conditions[k] && D.conditions[k].label) || COND_LABEL[k] || k;
 const condCut = k => { const c = D.conditions[k]; return (c && c.strength != null) ? c.strength === 0 : (k === 'split' || M.strength === 0); };
 const state = { cond: condKeys()[0], frame: 0, playing: true, speed: 1, colorBy: 'damage', outlines: true,
-  network: false, showFunctions: false, view: 'separate', acc: 0, names: true };
+  network: false, showFunctions: false, view: 'separate', acc: 0, names: true, riskDay: null };
+let RISK = null;   // the spread-risk map from /api/risk: chance each area is reached by a day
 
 const areaName = (side, r) => {
   const names = D.mesh[side].names;
@@ -284,7 +324,10 @@ function regionColors(side, f) {
   for (let r = 0; r < n; r++) {
     const d = dmg[r] / SC;
     let R, G, B;
-    if (state.colorBy === 'damage') {
+    if (state.colorBy === 'risk' && RISK) {
+      const pr = ((RISK.p[String(state.riskDay)] || {})[side] || [])[r] || 0;
+      [R, G, B] = pr < 0.02 ? [0.30, 0.32, 0.36] : [1.0, 0.85 - 0.7 * pr, 0.30 - 0.15 * pr];
+    } else if (state.colorBy === 'damage' || state.colorBy === 'risk') {
       [R, G, B] = d < 0.02 ? [0.34, 0.36, 0.40] : damageColor(d);
       const since = f - arrival[r];
       if (since >= 0 && since < 8) { const k = 0.75 * (1 - since / 8); R += (1 - R) * k; G += (1 - G) * k; B += (0.9 - B) * k; }
@@ -580,7 +623,7 @@ function buildPaths() {
 }
 function pathFlux(f, a) {
   const c = D.conditions[state.cond];
-  if (condCut(state.cond)) return 0;
+  if (!c || condCut(state.cond)) return 0;
   if (M.care) return c.help_flux ? c.help_flux[f][a] : 0;
   return clamp01(c[damaged === 'left' ? 'r2l' : 'l2r'][f][PATHS[a].l] / M.max_flux);
 }
@@ -808,7 +851,7 @@ function selectArea(side, region) {
   const job = fi >= 0 ? D.functions[side].names[fi].replace(/_/g, ' ') : 'no assigned job';
   pickText.innerHTML = `Selected: <b>${side} ${nice(side, region)}</b> · job: ${job} · the ${side === 'left' ? 'right' : 'left'} side will try to help`;
   pickControls.hidden = !!M.care;
-  if (M.care) { AI.area = D.mesh[side].names[region]; PRED = null; renderAI(); predictNow(); }
+  if (M.care) { AI.area = D.mesh[side].names[region]; AI.preset = ''; AI.patient = null; AI.touched = true; PRED = null; renderAI(); predictNow(); }
   setPickStatus('');
   redraw();
 }
@@ -837,8 +880,11 @@ document.getElementById('pick-run').onclick = async () => {
 };
 function applyRun(data) {               // show a new run without reloading the page
   D.conditions = data.conditions; D.summary = data.summary; D.functions = data.functions;
+  if (!D.conditions[state.cond]) state.cond = Object.keys(D.conditions)[0];   // the old plan may not exist any more
   D.callosal_links = data.callosal_links;
   M = Object.assign({}, M, data.meta, { interactive: M.interactive });
+  N = M.n_frames; state.frame = Math.min(state.frame, N - 1);
+  document.getElementById('slider').max = N - 1;
   M.care = data.meta.care || null;
   damaged = M.damaged; healthySide = damaged === 'left' ? 'right' : 'left';
   towardDamaged = damaged === 'left' ? 'r2l' : 'l2r';
@@ -862,10 +908,12 @@ function updateBanner(f) {
   const P = C.patient || {}, where = (P.epicentre || '').replace(/^[LR]_/, '');
   const reached = c[damaged + '_damage'][f].filter(d => d > 0.1 * SC).length;
   let phase = '';
-  if (day >= 0 && P.disorder === 'stroke' && day < (C.penumbra_days || 0))
+  const kind = ((C.disease || {}).engine || {}).type || P.disorder, tabName = (C.disease || {}).tab || 'Disease';
+  if (day >= 0 && kind === 'stroke' && day < (C.penumbra_days || 0))
     phase = `<span class="z">Day ${Math.floor(day) + 1}: the at-risk ring around ${esc(where)} is dying off (penumbra)</span>`;
-  else if (day >= 0 && P.disorder === 'tumor') phase = `<span class="z">Tumour at ${esc(where)} growing · ${reached} areas affected</span>`;
-  else if (day >= 0 && P.disorder === 'spreading') phase = `<span class="z">Disease spreading from ${esc(where)} along the wiring · ${reached} areas reached</span>`;
+  else if (day >= 0 && kind === 'tumor') phase = `<span class="z">Tumour at ${esc(where)} growing · ${reached} areas affected</span>`;
+  else if (day >= 0 && kind === 'spreading') phase = `<span class="z">${esc(tabName === 'spreading' ? 'Disease' : tabName)} spreading along the wiring · ${reached} areas reached</span>`;
+  else if (day >= 0 && kind === 'epilepsy') phase = (c.seizure && c.seizure[f]) ? `<span class="z">ϟ Seizure at ${esc(where)}</span>` : '';
   if (phase) parts.push(phase);
   if (day < 0) parts.push('<span class="m">Healthy brain · the injury happens on day 1</span>');
   else if (c.practice[f] === 1) {
@@ -884,12 +932,33 @@ function updateBanner(f) {
   banner.hidden = false;
 }
 
-// ---------- the AI panel ----------
+// ---------- the Clinic panel (answer first: tiles + one sentence; everything else under "Details") ----------
 const aiEl = document.getElementById('ai'), aiToggle = document.getElementById('ai-toggle');
-const AI = { area: null, severity: 0.9, disorder: 'stroke', startDay: 7, preset: '', busy: false, status: '', open: true };
+const AI = { area: null, severity: 0.9, disorder: 'stroke', startDay: 7, preset: '', busy: false, status: '', open: true,
+  overrides: {}, patient: null, options: null, healthy: null, upload: 'symptoms' };
 aiToggle.onclick = () => { AI.open = !AI.open; renderAI(); };
-const esc = t => String(t).replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[ch]);
+const esc = t => String(t).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
 const P100 = x => x == null ? '–' : Math.round(x * 100) + '%';
+const MODE_NAMES = { physical: '💪 Physical practice', imagery: '🧠 Imagined practice', bci: '🎧 Brain-computer interface',
+  'bci+vns': '🎧⚡ BCI + nerve stim', 'imagery+sleep': '🧠🌙 Imagery + sleep replay' };
+const modeName = m => MODE_NAMES[m] || m;
+const GLOSS = { BCI: 'Brain-computer interface: a headset reads the brain and moves the hand when the patient tries.',
+  VNS: 'Vagus nerve stimulation: a small pulse in the neck with each repetition helps the brain rewire (FDA approved, Vivistim).',
+  split: 'Split brain: the same patient with the bridge (corpus callosum) cut. It shows how much the other side adds.',
+  AUC: 'How well the AI separates patients who recover from those who do not, on areas it never saw (1 = perfect, 0.5 = guessing).',
+  ccPAS: 'Paired stimulation: a pulse at a healthy-side area, then at the damaged area, strengthens the link between them.' };
+const gl = (word, key) => `<span class="tip-i" title="${esc(GLOSS[key || word])}">${esc(word)}</span>`;
+const light = (v, hi, lo) => `<span class="light ${v >= hi ? 'g' : v >= lo ? 'a' : 'r'}"></span>`;
+const shortArea = a => {
+  const side = a.startsWith('L_') ? 'left' : 'right', i = D.mesh[side].names.indexOf(a);
+  const inf = i >= 0 ? INFO(side, i) : null;
+  return `${a[0]} ${a.slice(2)}${inf ? ' · ' + String(inf[0]).split(' ')[0].toLowerCase() : ''}`;
+};
+const weeksTxt = w => w == null ? 'never' : `${w} wk`;
+const TABS = { list: (M.care && M.care.tabs) || [] };
+const disease = () => (M.care && M.care.disease) || TABS.list.find(t => t.name === AI.disorder) || { name: AI.disorder };
+const isAI = () => !!disease().ai;
+
 function toggleJudgeTarget(side, region) {
   if (side !== healthySide) { AI.status = `Targets go on the healthy (${healthySide}) side.`; renderAI(); return; }
   const i = JUDGE.targets.findIndex(t => t.index === region);
@@ -897,11 +966,17 @@ function toggleJudgeTarget(side, region) {
   HEMIS.forEach(placeHelpers); renderAI(); redraw();
 }
 async function api(path, body) {
-  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
   const data = await res.json(); if (!res.ok) throw new Error(data.error || res.statusText); return data;
+}
+function patientBody() {   // what the server needs to rebuild this patient
+  if (AI.patient) return { patient: AI.patient, disorder: AI.disorder };
+  if (AI.preset) return { preset: AI.preset };
+  return { area: AI.area, severity: AI.severity, disorder: AI.disorder, overrides: AI.overrides };
 }
 async function predictNow() {
   if (!M.interactive || !AI.area) return;
+  if (!isAI()) { AI.status = 'Press ③ Simulate to see this patient.'; renderAI(); return; }
   AI.busy = true; AI.status = 'The AI is thinking…'; renderAI();
   try { PRED = await api('/api/predict', { area: AI.area, severity: AI.severity, disorder: AI.disorder }); AI.status = ''; }
   catch (e) { AI.status = 'Could not predict: ' + e.message; }
@@ -909,23 +984,253 @@ async function predictNow() {
 }
 async function simulateNow(withJudge) {
   if (!M.interactive || AI.busy) return;
-  AI.busy = true; AI.status = 'Simulating 4 months of care for each plan… (about 20-40 s)'; renderAI();
-  const body = AI.preset ? { preset: AI.preset } : { area: AI.area, severity: AI.severity, disorder: AI.disorder, prediction: PRED };
-  body.start_day = AI.startDay;
+  AI.busy = true; AI.status = 'Simulating each plan… (about 20-40 s)'; AI.options = AI.healthy = null; RISK = null; renderAI();
+  const body = { ...patientBody(), start_day: AI.startDay };
+  if (!AI.patient && !AI.preset && isAI()) body.prediction = PRED;
   if (withJudge) body.judge = { mode: JUDGE.mode, targets: JUDGE.targets.map(t => ({ area: t.area, strength: 0.5 })) };
-  try { const data = await api('/api/simulate', body); applyRun(data); PRED = M.care.prediction; AI.status = 'Done. Press Play to watch the care unfold.'; }
-  catch (e) { AI.status = 'Could not simulate: ' + e.message; }
+  try { const data = await api('/api/simulate', body); applyRun(data); PRED = M.care.prediction; AI.status = 'Done. Press Play to watch.'; }
+  catch (e) { AI.status = 'Could not simulate: ' + e.message; console.error(e); }
   AI.busy = false; renderAI();
 }
-function verifyBox() {
-  const pred = (M.care && M.care.prediction) || {}, rec = D.conditions.recommended;
-  if (!pred.best || !rec || !rec.measures) return '';
-  const said = pred.best.chance >= 0.5, did = rec.measures.weeks_to_goal != null;
-  const dF = (rec.measures.final_function - pred.best.final_function / 100) * 100;
-  const match = said === did;
-  return `<div class="verify"><b>Predict, then verify</b><br>AI said: ${Math.round(pred.best.chance * 100)}% chance to reach the goal, final ≈ ${Math.round(pred.best.final_function)}%` +
-    `<br>Simulation: ${did ? 'reached the goal in week ' + rec.measures.weeks_to_goal : 'did not reach the goal'}, final ${P100(rec.measures.final_function)}` +
-    `<br><span class="${match && Math.abs(dF) < 6 ? 'ok' : 'bad'}">${match ? '✔ outcome predicted correctly' : '✖ outcome predicted wrongly'} · final off by ${dF >= 0 ? '+' : ''}${dF.toFixed(1)} points</span></div>`;
+async function runAction(kind) {
+  if (!M.interactive || AI.busy) return;
+  const msg = { risk: 'Running the spread 30 times… (a few seconds)', options: 'Racing every therapy… (about 20 s)',
+    healthy: 'Testing the healthy-side treatments… (about 30-60 s)' }[kind];
+  AI.busy = true; AI.status = msg; renderAI();
+  try {
+    const out = await api('/api/' + kind, patientBody());
+    if (kind === 'risk') {
+      RISK = out; state.riskDay = out.days[out.days.length - 1];
+      const s = document.getElementById('color-by'); s.value = 'risk'; state.colorBy = 'risk'; updateLegend(); redraw();
+    }
+    if (kind === 'options') AI.options = out;
+    if (kind === 'healthy') AI.healthy = out;
+    AI.status = '';
+  } catch (e) { AI.status = 'Could not run: ' + e.message; }
+  AI.busy = false; renderAI();
+}
+
+// ----- pieces of the panel -----
+function diseaseCard() {
+  const d = disease(), P = d.plain || {}, C = d.clinician || {};
+  const pat = (M.care && M.care.patient) || {};
+  let h = `<div class="say">${esc(d.icon || '')} <b>${esc(d.tab || d.name)}</b>: ${esc(P.what || '')}</div>`;
+  if (pat.source) h += `<div class="m">Patient from ${esc(pat.source)}${(pat.notes || []).length ? ': ' + esc(pat.notes.join(' · ')) : ''}</div>`;
+  h += `<details><summary>About this disease ▸</summary>` +
+    (P.simulate ? `<div><b>We simulate:</b> ${esc(P.simulate)}</div>` : '') +
+    (P.shows ? `<div><b>It shows:</b> ${esc(P.shows)}</div>` : '') +
+    (P.use ? `<div><b>A clinician would:</b> ${esc(P.use)}</div>` : '') +
+    (P.limits ? `<div class="m"><b>Limits:</b> ${esc(P.limits)}</div>` : '') +
+    `<div class="clin-only">${C.scale ? `<div class="m">${esc(C.scale)}</div>` : ''}${C.today ? `<div class="m">Today: ${esc(C.today)}</div>` : ''}` +
+    ((d.assumptions || []).length ? `<div class="m">Assumptions: ${d.assumptions.map(esc).join(' · ')}</div>` : '') + `</div>` +
+    ((d.sources || []).length ? `<div class="m">Sources: ${d.sources.map(esc).join(' · ')}</div>`
+      : (d.custom ? '<div class="bad">User-made disease: no sources yet (uncited)</div>' : '')) +
+    `</details>`;
+  return h;
+}
+function answerCard(pred, area) {
+  if (pred.best) {   // AI-trained disease: the AI's answer
+    const ch = pred.best.chance, helpers = pred.helpers || [];
+    const stim = helpers.slice(0, 2).map(x => esc(shortArea(x.area))).join('<br>') || '–';
+    return `<div class="tiles">
+      <div class="tile"><div class="k">Can the other side help?</div><div class="v">${light(ch, 0.7, 0.4)}${Math.round(ch * 100)}%</div></div>
+      <div class="tile"><div class="k">Best practice</div><div class="v s">${esc(modeName(pred.best.mode))}</div></div>
+      <div class="tile"><div class="k">Stimulate here</div><div class="v s">${stim}</div></div></div>
+      <div class="say">The ${healthySide} side ${ch >= 0.7 ? 'can likely' : ch >= 0.4 ? 'may' : 'is unlikely to'} help ${esc(area)} get back to ${Math.round(M.care.goal * 100)}%.</div>`;
+  }
+  const keys = condKeys(), first = keys[0] && D.conditions[keys[0]], split = D.conditions.split;
+  if (first && split && first.measures && split.measures && keys[0] !== 'split') {   // other diseases: what the simulation says
+    const pts = (first.measures.final_function - split.measures.final_function) * 100;
+    const helpers = (M.care.helpers || []).slice(0, 2).map(x => esc(shortArea(x.area))).join('<br>') || '–';
+    return `<div class="tiles">
+      <div class="tile"><div class="k">Help from the other side</div><div class="v">${light(pts, 5, 1)}${pts >= 0 ? '+' : ''}${pts.toFixed(0)} pts</div></div>
+      <div class="tile"><div class="k">Function at the end</div><div class="v">${P100(first.measures.final_function)}</div></div>
+      <div class="tile"><div class="k">Help comes from</div><div class="v s">${helpers}</div></div></div>
+      <div class="say">${pts >= 5 ? 'The other side keeps a lot of function going.' : pts >= 1 ? 'The other side helps a little.' : 'The other side adds almost nothing here.'}</div>
+      <div class="m">Simulation only: the AI is not trained on this disease. Compared with the ${gl('split brain', 'split')}.</div>`;
+  }
+  return `<div class="m">${esc(pred.source || 'Click an area, then press ③ Simulate.')}</div>`;
+}
+function raceCard() {
+  const rows = condKeys().filter(k => D.conditions[k].measures);
+  if (!rows.length) return '';
+  const wk = rows.map(k => D.conditions[k].measures.weeks_to_goal).filter(w => w != null), maxW = Math.max(4, ...wk);
+  // a disease that keeps getting worse (spreading, seizures) is judged by where function ends, not by weeks
+  const kind = (disease().engine || {}).type, byEnd = kind === 'spreading' || kind === 'epilepsy';
+  let h = `<div class="card"><h4>${byEnd ? 'Result: function at the end' : `Result: weeks to ${Math.round(M.care.goal * 100)}%`}</h4><div class="race">`;
+  for (const k of rows) {
+    const m = D.conditions[k].measures, w = m.weeks_to_goal;
+    const lab = condLabel(k).replace(/^AI plan: .*/, 'AI plan').replace(/ \(control\)/, '');
+    const note = byEnd ? P100(m.final_function) : m.never_impaired ? 'no loss' : weeksTxt(w);
+    const width = byEnd ? Math.round(100 * Math.min(1, m.final_function)) : (w == null ? 0 : Math.round(100 * (1 - (w - 1) / maxW)));
+    h += `<span class="nm" title="${esc(condLabel(k))}">${k === state.cond ? '▶ ' : ''}${esc(lab)}</span>` +
+      `<div class="bar"><i class="w" style="width:${width}%"></i></div><span>${note}</span>`;
+  }
+  h += `</div>`;
+  const pred = M.care.prediction || {}, rec = D.conditions.recommended;
+  if (pred.best && rec && rec.measures) {
+    const said = pred.best.chance >= 0.5, did = rec.measures.weeks_to_goal != null;
+    h += `<div class="${said === did ? 'ok' : 'bad'}">${said === did ? '✔ AI was right' : '✖ AI was wrong'}</div>`;
+  }
+  h += extraLine();
+  h += `<details><summary>Details ▸</summary><table style="width:100%;font-size:11.5px"><tr class="m"><td>plan</td><td>weeks</td><td>phys reps</td><td>final</td></tr>` +
+    rows.map(k => {
+      const m = D.conditions[k].measures;
+      return `<tr><td>${esc(condLabel(k))}</td><td>${m.weeks_to_goal ?? '–'}</td>` +
+        `<td>${m.physical_reps_to_goal == null ? '–' : Math.round(m.physical_reps_to_goal).toLocaleString()}</td><td>${P100(m.final_function)}</td></tr>`;
+    }).join('') + `</table>${extraDetails()}</details></div>`;
+  return h;
+}
+function extraLine() {   // one disease-specific line under the race
+  const c = D.conditions[state.cond] || {}, x = c.extra || {};
+  if (x.stages && x.stages.length)
+    return `<div class="chips">${x.stages.map(s => `<span class="chip ${s.day != null ? 'on' : ''}" title="${esc(s.areas.join(', '))}">${esc(s.stage.split(' (')[0])}${s.day != null ? ' · day ' + Math.round(s.day) : ''}</span>`).join('')}</div>`;
+  if (x.seizure_spread) {
+    const z = x.seizure_spread, cut = D.conditions.split && (D.conditions.split.extra || {}).seizure_spread;
+    return `<div class="say">${z.seizures} seizures · ${Math.round(100 * Math.max(0, z.crosses))}% crosses the bridge${cut ? ` (cut bridge: ${Math.round(100 * Math.max(0, cut.crosses))}% = noise level)` : ''}</div>`;
+  }
+  if (x.bridge_integrity_weekly) {
+    const v = x.bridge_integrity_weekly;
+    return `<div class="say">Bridge health: ${P100(v[0])} → ${P100(v[v.length - 1])}</div>`;
+  }
+  if (x.final_damage && disease().name === 'als')
+    return `<div class="say">Damage left ${P100(x.final_damage.left)} · right ${P100(x.final_damage.right)}: no healthy side</div>`;
+  return '';
+}
+function extraDetails() {
+  return condKeys().filter(k => D.conditions[k].extra).map(k => {
+    const x = D.conditions[k].extra || {}, bits = [];
+    if (x.seizure_spread) bits.push(`seizure crossing ${(100 * x.seizure_spread.crosses).toFixed(1)}%, own-side spread ${(100 * x.seizure_spread.own_spread).toFixed(0)}%`);
+    if (x.bridge_integrity_weekly) bits.push(`bridge ${P100(x.bridge_integrity_weekly[x.bridge_integrity_weekly.length - 1])} at the end`);
+    if (x.final_damage) bits.push(`final damage L ${P100(x.final_damage.left)} / R ${P100(x.final_damage.right)}`);
+    return bits.length ? `<div class="m">${esc(condLabel(k))}: ${esc(bits.join(' · '))}</div>` : '';
+  }).join('');
+}
+function riskCard() {
+  if (!RISK) return '';
+  const days = RISK.days || [];
+  let h = `<div class="card"><h4>Spread risk (no treatment)</h4>`;
+  if (days.length > 1) h += `<div class="chips">${days.map(d => `<button class="chip ${d === state.riskDay ? 'on' : ''}" data-rday="${d}">day ${d}</button>`).join('')}</div>`;
+  const list = RISK.next || RISK.top || [];
+  const what = RISK.kind === 'spread' ? 'Next areas' : RISK.kind === 'bridge' ? 'Bridge fibres most at risk'
+    : RISK.kind === 'seizure' ? 'Areas seizures recruit' : 'At-risk ring (save it fast)';
+  h += `<div class="say">${what}: ${list.slice(0, 4).map(x => `<b>${esc(x.area)}</b>${x.day != null ? ' (day ' + Math.round(x.day) + ')' : ''}`).join(', ') || 'none'}</div>`;
+  h += `<details><summary>Details ▸</summary>${list.map(x => `<div class="m">${esc(x.area)}: ${P100(x.p)}${x.day != null ? ' · ~day ' + x.day : ''}</div>`).join('')}` +
+    ((RISK.if_bridge_carries || []).length ? `<div class="m"><b>If the bridge also carried it:</b> ${RISK.if_bridge_carries.slice(0, 4).map(x => `${esc(x.area)} (day ${Math.round(x.day)})`).join(', ')}</div>` : '') +
+    `<div class="m">Brain colours: yellow → red = chance the area is reached. ${RISK.kind === 'spread' ? 'Speeds vary 0.5–1.5× over 30 runs.' : ''}</div></details></div>`;
+  return h;
+}
+const BADGE = { approved: 'FDA approved', trials: 'in trials', model: 'model idea', standard: 'standard care', control: 'control' };
+function optionsCard() {
+  const O = AI.options; if (!O) return '';
+  const opts = O.options, best = opts.find(o => !o.control);
+  const maxW = Math.max(4, ...opts.map(o => o.weeks || 0));
+  let h = `<div class="card"><h4>All options, fastest first</h4><div class="say">Fastest: <b>${esc(best.name)}</b> (${weeksTxt(best.weeks)}).</div><div class="race">`;
+  for (const o of opts) h += `<span class="nm" title="${esc(o.basis)}">${esc(o.name.replace(/ \(.*\)/, ''))}<span class="badge b-${o.status}">${BADGE[o.status] || o.status}</span></span>` +
+    `<div class="bar"><i class="w" style="width:${o.weeks == null ? 0 : Math.round(100 * (1 - (o.weeks - 1) / maxW))}%"></i></div><span>${weeksTxt(o.weeks)}</span>`;
+  h += `</div>`;
+  const dz = O.dose || {};
+  if (dz.area) h += `<div class="say">How much: excite <b>${esc(dz.area)}</b> at <b>${dz.suggested ?? '–'}</b> (smallest dose that works).</div>`;
+  h += `<details><summary>Details ▸</summary>${opts.map(o => `<div class="m"><b>${esc(o.name)}</b>${o.detail ? ' (' + esc(o.detail) + ')' : ''}: final ${P100(o.final)} · ${esc(o.basis)} <i>${esc(o.source)}</i></div>`).join('')}` +
+    (dz.curve ? `<div class="m">Dose curve (${esc(dz.area)}): ${dz.curve.map(c => `${c.strength} → ${weeksTxt(c.weeks)}, ${P100(c.final)}`).join(' · ')}</div>` : '') + `</details></div>`;
+  return h;
+}
+function healthyCard() {
+  const H = AI.healthy; if (!H) return '';
+  const b = H.bridge, md = H.mirror, sw = H.switch, ho = H.handoff;
+  const saved = (w, w0) => w == null ? 'no' : w0 == null ? `${w} wk` : (w0 - w > 0 ? `−${w0 - w} wk` : 'same');
+  let h = `<div class="card"><h4>The healthy side treats the damaged side</h4><div class="tiles">
+    <div class="tile"><div class="k">Bridge Builder</div><div class="v s">${b.best && b.helps ? esc(b.best.replace(' -> ', ' → ')) : 'no gain'}</div><div class="m">${b.helps ? saved(b.weeks, b.weeks_without) : ''}</div></div>
+    <div class="tile"><div class="k">Mirror Drive</div><div class="v s">${md.helps ? saved(md.weeks, md.weeks_without) : 'no gain'}</div><div class="m">${md.beats_timing ? 'timing matters ✓' : 'timing: no edge'}</div></div>
+    <div class="tile"><div class="k">Healthy side</div><div class="v">${esc(sw.word)}</div><div class="m">${ho.best ? esc(ho.best.replace('help to the end, then stop', 'help to the end')) : ''}</div></div></div>
+    <div class="say">${esc(sw.why.split(' (')[0])}</div>`;
+  const tbl = (title, rows) => `<div class="m"><b>${esc(title)}</b></div>` + rows.map(r => `<div class="m">${esc(r.plan)}: ${weeksTxt(r.weeks)}, final ${P100(r.final)}</div>`).join('');
+  h += `<details><summary>Details ▸</summary>
+    <div class="m">${gl('Bridge Builder', 'ccPAS')}: paired pulses strengthen one fibre (order matters). Mirror Drive: the ${healthySide} side's activity triggers stimulation of the damaged side; the controls get the same dose at fixed or random times (${Math.round(100 * md.duty)}% of practice steps).</div>
+    ${tbl('Bridge Builder', b.rows)}${tbl('Mirror Drive', md.rows)}${tbl('Help-or-Hinder at ' + sw.area, sw.rows)}${tbl('Hand-off (' + ho.target + ')', ho.rows)}
+    <div class="m">Hand-off picks the shortest help that ends as well as the best (function in the last 2 weeks, with no help).</div></details></div>`;
+  return h;
+}
+const SYMPTOM_LIST = ['weak right hand or arm', 'weak left hand or arm', 'trouble speaking or understanding', 'trouble with numbers or sequences',
+  'ignores the left side of space', 'trouble recognising faces', 'flat tone of voice', 'loss of right visual field', 'loss of left visual field'];
+function uploadCard() {
+  const tabs = ['symptoms', 'table', 'mask'].map(k => `<button data-up="${k}" aria-pressed="${AI.upload === k}">${{ symptoms: 'No scan', table: 'Area table', mask: 'Lesion scan' }[k]}</button>`).join('');
+  let body;
+  if (AI.upload === 'symptoms') body = `<div>${SYMPTOM_LIST.map(s => `<label class="chk" style="display:flex"><input type="checkbox" data-sym="${esc(s)}"> ${esc(s)}</label>`).join('')}</div>
+      <div class="m">Optional EEG slow-wave power: left <input type="number" id="eeg-l" style="width:56px"> right <input type="number" id="eeg-r" style="width:56px"></div>`;
+  else if (AI.upload === 'table') body = `<textarea id="up-text" placeholder="area,value&#10;L_6d,0.9&#10;L_4,0.6"></textarea>
+      <label class="chk">Values are <select id="up-kind"><option value="damage">damage 0-1</option><option value="suvr">tau-PET SUVR</option></select></label>`;
+  else body = `<input type="file" id="up-file" accept=".nii,.nii.gz,.gz"><div class="m">A lesion mask in MNI152 space (e.g. ATLAS, DeepISLES). Read only; never stored in data/.</div>`;
+  return `<details id="up-det"><summary>Upload a patient ▸</summary><div class="seg" style="margin:4px 0">${tabs}</div>${body}
+    <div class="btns"><button class="go" id="up-go">Read this patient</button>${AI.patient ? '<button id="up-clear">Forget patient</button>' : ''}</div></details>`;
+}
+function builderCard() {
+  return `<details><summary>Build a new disease ▸</summary><div class="ctl">
+    <span>Name</span><input type="text" id="b-name" placeholder="e.g. my disease">
+    <span>Behaves like</span><select id="b-engine"><option value="stroke">sudden damage</option><option value="tumor">slow mass</option><option value="spreading">spreading</option><option value="epilepsy">seizures</option></select>
+    <span>Starts at</span><span>${esc(AI.area || 'click an area')}</span>
+    <span>Severity</span><input type="range" id="b-sev" min="0.2" max="0.95" step="0.05" value="0.7">
+    <span>One line</span><input type="text" id="b-what" placeholder="what it does">
+    <span>Sources</span><input type="text" id="b-src" placeholder="paper, year"></div>
+    <div class="btns"><button class="go" id="b-save">Save as a new tab</button></div>
+    <div class="m">Saved to configs/diseases/custom_&lt;name&gt;.yaml (or write that file by hand: docs/diseases.md).</div></details>`;
+}
+function judgeCard() {
+  if (!isAI()) return '';
+  return `<details><summary>Beat the AI (your own plan) ▸</summary><div class="ctl"><span>Practice</span><select id="j-mode">
+    ${['physical', 'imagery', 'bci', 'bci+vns', 'imagery+sleep'].map(m => `<option value="${m}" ${m === JUDGE.mode ? 'selected' : ''}>${esc(modeName(m))}</option>`).join('')}</select>
+    <span>Targets</span><span>${JUDGE.targets.map(t => esc(t.area)).join(', ') || '<span class="m">none</span>'}</span></div>
+    <div class="btns"><button id="j-pick">${JUDGE.picking ? 'Done picking' : 'Pick targets on the ' + healthySide + ' side'}</button>
+    <button class="go" id="j-race">Race my plan vs the AI</button></div></details>`;
+}
+function aiDetails(pred) {
+  const helpers = pred.helpers || [];
+  let h = '';
+  if (pred.best) {
+    const lo = Math.min(...pred.modes.map(m => m.final_function)) - 5, hi = Math.max(...pred.modes.map(m => m.final_function));
+    h += `<div class="m"><b>Practice options (expected final function)</b></div>` + [...pred.modes].sort((a, b) => b.final_function - a.final_function).map(m =>
+      `<div class="mode"><span>${esc(modeName(m.mode))}</span><div class="bar"><i style="width:${Math.round(100 * (m.final_function - lo) / Math.max(1, hi - lo))}%"></i></div><span>${Math.round(m.final_function)}%</span></div>`).join('');
+  }
+  if (helpers.length) h += `<div class="m"><b>How the help travels</b></div>` + helpers.slice(0, 4).map(x =>
+    `<div class="m">${Math.round(x.share * 100)}% from ${esc(x.area)} (${esc(x.route)}) → ${esc((x.reaches || []).join(', '))}</div>`).join('');
+  if ((pred.why || []).length) h += `<div class="m"><b>Why (what the AI looked at)</b></div>` + pred.why.map(w => `<div class="m">${esc(w)}</div>`).join('');
+  if (pred.metrics && pred.metrics.auc_success != null)
+    h += `<div class="m">Tested on areas it never saw: ${gl('AUC')} ${pred.metrics.auc_success.toFixed(2)} · help R² ${pred.metrics.r2_help.toFixed(2)}</div>`;
+  if (pred.source) h += `<div class="m">${esc(pred.source)}</div>`;
+  return h ? `<details><summary>Details ▸</summary>${h}</details>` : '';
+}
+function controls(area) {
+  const d = disease(), sliders = (d.sliders || []).filter(s => s.key !== 'severity');
+  const sevS = (d.sliders || []).find(s => s.key === 'severity') || { label: 'How bad', min: 0.3, max: 0.95, step: 0.05 };
+  return `<div class="steps">
+    <span class="n">1</span><span>${AI.patient ? '<b>Uploaded patient</b>' : `Click an area: <b>${esc(area || '–')}</b>`}</span>
+    <span class="n">2</span><span>${esc(sevS.label)} <input type="range" id="ai-sev" min="${sevS.min}" max="${sevS.max}" step="${sevS.step}" value="${AI.severity}"><span> ${Math.round(AI.severity * 100)}%</span></span>
+    ${sliders.map(s => `<span></span><span>${esc(s.label)} <input type="range" data-ov="${esc(s.key)}" min="${s.min}" max="${s.max}" step="${s.step}" value="${AI.overrides[s.key] ?? s.min}"><span class="m"> ${AI.overrides[s.key] ?? 'default'}</span></span>`).join('')}
+    <span class="n">3</span><span><button class="go" id="ai-sim">Simulate</button>${isAI() ? ' <button id="ai-predict">Ask the AI</button>' : ''}</span></div>
+    <div class="acts"><button data-act="risk" title="Chance each area is reached next">Spread risk</button><button data-act="options" title="Every therapy, fastest first, with a dose">All options</button><button data-act="healthy" title="Bridge Builder, Mirror Drive, Help-or-Hinder, Hand-off">Healthy side helps</button></div>
+    <details><summary>More settings ▸</summary><div class="ctl"><span>Start day</span><input type="number" min="1" max="100" value="${AI.startDay}" id="ai-day" style="width:70px">
+      ${isAI() ? `<span>Preset</span><select id="ai-preset"><option value="">(the clicked area)</option><option value="left_6d_stroke">Motor stroke (left 6d)</option>
+      <option value="left_broca_stroke">Language stroke (left Broca)</option><option value="right_ffc_tumor">Tumour (right face area)</option></select>` : ''}</div></details>`;
+}
+function renderTabs() {
+  const nav = document.getElementById('tabs'); nav.innerHTML = '';
+  document.getElementById('clin-wrap').hidden = !M.care;
+  if (!M.care || !TABS.list.length) return;
+  const cur = (M.care.disease || {}).name || AI.disorder;
+  for (const t of TABS.list) {
+    const b = document.createElement('button'); b.setAttribute('aria-pressed', t.name === cur);
+    b.innerHTML = `<span class="ic">${esc(t.icon || '')}</span>${esc(t.tab)}${t.custom ? ' ✚' : ''}`;
+    b.title = (t.plain || {}).what || t.tab;
+    b.onclick = () => {
+      if (!M.interactive || AI.busy) return;
+      AI.disorder = t.name; AI.overrides = {}; AI.patient = null; AI.preset = ''; AI.touched = true; PRED = null; RISK = null;
+      AI.severity = t.severity || 0.9; AI.area = t.default_area || null;
+      if (M.care) M.care.disease = t;
+      nav.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b));
+      simulateNow(false);
+    };
+    nav.append(b);
+  }
 }
 function renderAI() {
   const care = !!M.care;
@@ -933,71 +1238,88 @@ function renderAI() {
   document.body.classList.toggle('care', care);
   document.body.classList.toggle('ai-closed', care && !AI.open);
   window.dispatchEvent(new Event('resize'));
+  if (care && M.care.tabs) TABS.list = M.care.tabs;
+  renderTabs();
   if (!care) return;
+  if (M.care.disease && M.care.disease.name) AI.disorder = M.care.disease.name;
+  const P0 = M.care.patient || {};   // first page: keep the buttons on the example patient shown
+  if (!AI.touched && !AI.area && !AI.patient && !AI.preset && P0.preset) AI.preset = P0.preset;
   const pred = PRED || M.care.prediction || {};
   const area = AI.area || pred.area || (M.care.patient || {}).epicentre || '';
-  let h = `<button style="float:right" onclick="document.getElementById('ai-toggle').click()">hide</button><h2>AI Help Predictor</h2>`;
-  if (pred.best) {
-    h += `<div class="m">Chance the ${healthySide} side can help <b>${esc(area)}</b> reach ${Math.round(M.care.goal * 100)}%</div>` +
-      `<div class="big">${Math.round(pred.best.chance * 100)}%</div>` +
-      `<div class="m">best: <b>${esc(pred.best.mode)}</b> · expected help ${pred.best.help_points >= 0 ? '+' : ''}${pred.best.help_points.toFixed(1)} points vs split brain</div>`;
-    const lo = Math.min(...pred.modes.map(m => m.final_function)) - 5, hi = Math.max(...pred.modes.map(m => m.final_function));
-    h += `<h3>Expected final function by practice mode</h3>` + [...pred.modes].sort((a, b) => b.final_function - a.final_function).map(m =>
-      `<div class="mode" title="chance to reach the goal: ${Math.round(m.chance * 100)}%"><span>${esc(m.mode)}</span>` +
-      `<div class="bar"><i style="width:${Math.round(100 * (m.final_function - lo) / Math.max(1, hi - lo))}%"></i></div>` +
-      `<span>${Math.round(m.final_function)}%</span></div>`).join('') +
-      `<div class="m">bar length is relative; hover a mode for its chance of reaching the goal</div>`;
-  } else if (area) h += `<div class="m">${esc(pred.source || 'Click an area to ask the AI.')}</div>`;
-  const helpers = pred.helpers || [];
-  if (helpers.length) {
-    h += `<h3>How the help travels</h3><ul>` + helpers.slice(0, 4).map(x =>
-      `<li><b>${Math.round(x.share * 100)}%</b> from <b>${esc(x.area)}</b> <span class="m">(${esc(x.route)})</span> → ${esc((x.reaches || []).join(', '))}</li>`).join('') + '</ul>';
-    const top = helpers.slice(0, 2).map(x => x.area).join(' and ');
-    h += `<h3>What must happen on the other side</h3><div>${esc(top)} must be active <i>with</i> the practised movement. ` +
-      `Practice that engages both sides, and stimulation that makes ${esc(top)} more excitable, raise the help.</div>`;
-  }
-  if ((pred.why || []).length) h += `<h3>Why (what the AI looked at)</h3><ul>` + pred.why.map(w => `<li>${esc(w)}</li>`).join('') + '</ul>';
-  if (pred.metrics && pred.metrics.auc_success != null)
-    h += `<div class="m">Tested on areas it never saw: AUC ${pred.metrics.auc_success.toFixed(2)} · help R² ${pred.metrics.r2_help.toFixed(2)}</div>`;
-  if (pred.source) h += `<div class="m">${esc(pred.source)}</div>`;
-  const rows = condKeys().filter(k => D.conditions[k].measures);
-  if (rows.length) {
-    h += `<h3>Simulated outcome (4 months)</h3><table style="width:100%;font-size:12px"><tr class="m"><td>plan</td><td>weeks</td><td>phys reps</td><td>final</td></tr>` +
-      rows.map(k => { const m = D.conditions[k].measures; return `<tr><td>${esc(condLabel(k).split(':')[0])}</td><td>${m.weeks_to_goal ?? '–'}</td>` +
-        `<td>${m.physical_reps_to_goal == null ? '–' : Math.round(m.physical_reps_to_goal).toLocaleString()}</td><td>${P100(m.final_function)}</td></tr>`; }).join('') + '</table>';
-    h += verifyBox();
-  }
-  if (M.interactive) {
-    h += `<h3>Try it</h3><div class="ctl">
-      <span>Damage</span><span>${esc(area || 'click an area')}</span>
-      <span>Severity</span><input type="range" min="0.3" max="0.95" step="0.05" value="${AI.severity}" id="ai-sev">
-      <span>Disorder</span><select id="ai-dis"><option value="stroke">stroke</option><option value="tumor">tumour</option><option value="spreading">spreading disease</option></select>
-      <span>Start day</span><input type="number" min="1" max="100" value="${AI.startDay}" id="ai-day" style="width:70px">
-      <span>Preset</span><select id="ai-preset"><option value="">(the clicked area)</option>
-        <option value="left_6d_stroke">Motor stroke (left 6d)</option><option value="left_broca_stroke">Language stroke (left Broca)</option>
-        <option value="right_ffc_tumor">Tumour (right face area)</option></select></div>
-      <div class="btns"><button id="ai-predict">Ask the AI</button><button class="go" id="ai-sim">Simulate the AI plan</button></div>
-      <h3>Beat the AI (your own plan)</h3><div class="ctl"><span>Practice</span><select id="j-mode">
-        ${['physical', 'imagery', 'bci', 'bci+vns', 'imagery+sleep'].map(m => `<option ${m === JUDGE.mode ? 'selected' : ''}>${m}</option>`).join('')}</select>
-      <span>Targets</span><span>${JUDGE.targets.map(t => esc(t.area)).join(', ') || '<span class="m">none</span>'}</span></div>
-      <div class="btns"><button id="j-pick">${JUDGE.picking ? 'Done picking' : 'Pick targets on the ' + healthySide + ' side'}</button>
-        <button class="go" id="j-race">Race my plan vs the AI</button></div>`;
-  }
+  let h = `<button style="float:right" onclick="document.getElementById('ai-toggle').click()">hide</button><h2>${isAI() ? 'AI Help Predictor' : 'Clinic'}</h2>`;
+  h += diseaseCard() + answerCard(pred, area) + aiDetails(pred) + raceCard() + riskCard() + optionsCard() + healthyCard();
+  if (M.interactive) h += controls(area) + uploadCard() + builderCard() + judgeCard();
   if (AI.status) h += `<div class="verify">${esc(AI.status)}</div>`;
+  const openUp = document.getElementById('up-det')?.open;
   aiEl.innerHTML = h;
+  if (openUp) document.getElementById('up-det').open = true;
+  aiEl.querySelectorAll('[data-rday]').forEach(b => b.onclick = () => { state.riskDay = +b.dataset.rday; renderAI(); updateLegend(); redraw(); });
   if (!M.interactive) return;
   const $ = id => document.getElementById(id);
-  $('ai-sev').oninput = e => { AI.severity = +e.target.value; };
-  $('ai-sev').onchange = () => predictNow();
-  $('ai-dis').value = AI.disorder; $('ai-dis').onchange = e => { AI.disorder = e.target.value; predictNow(); };
+  $('ai-sev').oninput = e => { AI.severity = +e.target.value; e.target.nextElementSibling.textContent = ' ' + Math.round(AI.severity * 100) + '%'; };
+  $('ai-sev').onchange = () => { if (isAI()) predictNow(); };
+  aiEl.querySelectorAll('[data-ov]').forEach(el => {
+    el.oninput = e => { AI.overrides[el.dataset.ov] = +e.target.value; el.nextElementSibling.textContent = ' ' + e.target.value; };
+  });
   $('ai-day').onchange = e => { AI.startDay = Math.max(1, +e.target.value || 7); };
-  $('ai-preset').value = AI.preset; $('ai-preset').onchange = e => { AI.preset = e.target.value; };
-  $('ai-predict').onclick = () => predictNow();
+  if ($('ai-preset')) { $('ai-preset').value = AI.preset; $('ai-preset').onchange = e => { AI.preset = e.target.value; }; }
+  if ($('ai-predict')) $('ai-predict').onclick = () => predictNow();
   $('ai-sim').onclick = () => simulateNow(false);
-  $('j-mode').onchange = e => { JUDGE.mode = e.target.value; };
-  $('j-pick').onclick = () => { JUDGE.picking = !JUDGE.picking; AI.status = JUDGE.picking ? `Click up to 3 areas on the ${healthySide} hemisphere.` : ''; renderAI(); };
-  $('j-race').onclick = () => simulateNow(true);
+  aiEl.querySelectorAll('[data-act]').forEach(b => b.onclick = () => runAction(b.dataset.act));
+  aiEl.querySelectorAll('[data-up]').forEach(b => b.onclick = () => { AI.upload = b.dataset.up; renderAI(); $('up-det').open = true; });
+  $('up-go').onclick = () => uploadNow();
+  if ($('up-clear')) $('up-clear').onclick = () => { AI.patient = null; AI.status = 'Back to clicking areas.'; renderAI(); };
+  $('b-save').onclick = () => saveDisease();
+  if ($('j-mode')) {
+    $('j-mode').onchange = e => { JUDGE.mode = e.target.value; };
+    $('j-pick').onclick = () => { JUDGE.picking = !JUDGE.picking; AI.status = JUDGE.picking ? `Click up to 3 areas on the ${healthySide} hemisphere.` : ''; renderAI(); };
+    $('j-race').onclick = () => simulateNow(true);
+  }
 }
+async function uploadNow() {
+  if (AI.busy) return;
+  const $ = id => document.getElementById(id);
+  let body;
+  try {
+    if (AI.upload === 'symptoms') {
+      const sym = [...aiEl.querySelectorAll('[data-sym]')].filter(x => x.checked).map(x => x.dataset.sym);
+      const l = +$('eeg-l').value, r = +$('eeg-r').value;
+      body = { kind: 'symptoms', symptoms: sym, severity: AI.severity, disorder: AI.disorder, eeg: l > 0 && r > 0 ? { delta_left: l, delta_right: r } : null };
+    } else if (AI.upload === 'table') {
+      body = { kind: 'table', text: $('up-text').value, value_kind: $('up-kind').value, disorder: AI.disorder };
+    } else {
+      const f = $('up-file').files[0]; if (!f) throw new Error('choose a file first');
+      const buf = new Uint8Array(await f.arrayBuffer()); let bin = '';
+      for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+      body = { kind: 'mask', filename: f.name, data_b64: btoa(bin), disorder: AI.disorder };
+    }
+    AI.busy = true; AI.status = 'Reading the patient…'; renderAI();
+    const out = await api('/api/intake', body);
+    AI.patient = out.patient; AI.busy = false;
+    const c = out.card;
+    AI.status = `Found: ${c.damaged_hemisphere} side, worst at ${c.epicentre}; jobs hit: ${Object.keys(c.jobs_hit).slice(0, 3).join(', ') || 'none'}. Simulating…`;
+    renderAI(); simulateNow(false);
+  } catch (e) { AI.busy = false; AI.status = 'Could not read the patient: ' + e.message; renderAI(); }
+}
+async function saveDisease() {
+  const $ = id => document.getElementById(id);
+  const name = $('b-name').value.trim(), engine = $('b-engine').value;
+  if (!name) { AI.status = 'Give the disease a name.'; renderAI(); return; }
+  if (!AI.area) { AI.status = 'Click the area where it starts first.'; renderAI(); return; }
+  const eng = { stroke: { type: 'stroke' }, tumor: { type: 'tumor', growth_steps: 480, pressure: 0.3 },
+    spreading: { type: 'spreading', model: 'fisher_kpp', transport: 0.001, growth: 0.0016 },
+    epilepsy: { type: 'epilepsy', excitability: 1.6, seizures_per_day: 1.0, seizure_drive: 2.5 } }[engine];
+  const src = $('b-src').value.trim();
+  try {
+    const out = await api('/api/disease/save', { name, engine: eng, default_area: AI.area, severity: +$('b-sev').value,
+      seed: { mode: 'clicked', neighbors: engine === 'spreading' ? 0 : 4 }, what: $('b-what').value.trim() || 'A disease made with the Disease Builder.',
+      sources: src ? [src] : [] });
+    TABS.list = out.tabs; AI.disorder = out.name; AI.status = `Saved. New tab: ${out.tab}.`;
+    if (M.care) M.care.tabs = out.tabs;
+    renderAI(); simulateNow(false);
+  } catch (e) { AI.status = 'Could not save: ' + e.message; renderAI(); }
+}
+document.getElementById('clin').onchange = e => document.body.classList.toggle('clin', e.target.checked);
 renderAI();
 
 // ---------- readouts, legend ----------
@@ -1044,7 +1366,10 @@ function updateLegend() {
       `<span><i style="background:#fff3d0"></i>Just reached</span><span><i style="background:#ff7a1f"></i>Wiring carrying the disease</span>`,
     input: `<span><i style="background:var(--help)"></i>Signals arriving from the other side</span><span><i style="background:var(--send)"></i>Sending to the other side</span><span><i style="background:#6b1a1f"></i>Damaged (dimmed)</span>`,
     activity: `<span><i style="background:var(--activity)"></i>Activity</span><span><i style="background:#6b1a1f"></i>Damaged (dimmed)</span>`,
+    risk: RISK ? `<span><i style="background:#4d5159"></i>Not reached</span><span>Chance of being reached by day ${state.riskDay}<span class="ramp" style="background:linear-gradient(90deg,#ffd94d,#ff3a2b)"></span>(low → certain)</span>`
+      : `<span>Press “Spread risk” in the panel first</span>`,
   };
+  parts.help = parts.input;
   L.innerHTML = parts[state.colorBy] + (state.view === 'together'
     ? `<span><i style="background:var(--help)"></i>Pulse into the ${damaged} side</span><span><i style="background:var(--activity)"></i>Pulse into the ${healthySide} side</span>` : '');
 }
@@ -1125,25 +1450,32 @@ function drawChart(f) {
   ctx.fillStyle = '#7d8899'; ctx.textAlign = 'left'; ctx.fillText('time →', L, h - 8);
 }
 const CARE_COLORS = { recommended: '#38e1ff', judge: '#ffffff', standard_care: '#ffc03a', split: '#8a93a3' };
+const EXTRA_COLORS = ['#5fe08a', '#c9a4ff', '#ff7a7a', '#38e1ff', '#ffd84a'];
+const careColor = k => CARE_COLORS[k] || EXTRA_COLORS[Math.max(0, condKeys().indexOf(k)) % EXTRA_COLORS.length];
 function drawCareChart(ctx, w, h, L, R, T, B, pw, ph, X, Y, f) {
   const C = M.care, wk = C.week_steps / M.stride, on = C.onset / M.stride;
   ctx.setLineDash([4, 4]); ctx.strokeStyle = '#5fe08a'; ctx.beginPath(); ctx.moveTo(L, Y(C.goal)); ctx.lineTo(L + pw, Y(C.goal)); ctx.stroke(); ctx.setLineDash([]);
   ctx.fillStyle = '#5fe08a'; ctx.textAlign = 'left'; ctx.fillText(`goal ${Math.round(C.goal * 100)}%`, L + 4, Y(C.goal) - 7);
   for (const k of condKeys()) {
     const ys = D.conditions[k].weekly || [];
-    ctx.strokeStyle = CARE_COLORS[k] || '#b48cff'; ctx.lineWidth = k === state.cond ? 2.4 : 1.3; ctx.globalAlpha = k === state.cond ? 1 : 0.6;
+    ctx.strokeStyle = careColor(k); ctx.lineWidth = k === state.cond ? 2.4 : 1.3; ctx.globalAlpha = k === state.cond ? 1 : 0.6;
     ctx.beginPath();
     ys.forEach((v, i) => { const x = X(Math.min(N - 1, on + (i + 1) * wk)); i ? ctx.lineTo(x, Y(v)) : ctx.moveTo(x, Y(v)); });
     ctx.stroke(); ctx.globalAlpha = 1;
   }
   ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(X(f), T); ctx.lineTo(X(f), T + ph); ctx.stroke();
   ctx.textAlign = 'left'; ctx.fillStyle = '#d6deea';
-  ctx.fillText(`Trained job (${C.job.replace(/_/g, ' ')}), % of healthy, week by week`, L, 9);
+  const title = `${C.job.replace(/_/g, ' ')}, % of healthy, by week`;
+  ctx.fillText(title, L, 9);
+  const titleEnd = L + ctx.measureText(title).width + 16;
   let kx = L + pw; ctx.textAlign = 'right';
   for (const k of [...condKeys()].reverse()) {
-    const label = condLabel(k).split(':')[0];
-    ctx.fillStyle = '#7d8899'; ctx.fillText(label, kx, 9); const tw = ctx.measureText(label).width;
-    ctx.fillStyle = CARE_COLORS[k] || '#b48cff'; ctx.fillRect(kx - tw - 14, 5, 9, 9); kx -= tw + 28;
+    let label = condLabel(k).split(':')[0].replace(/ \(control\)/, '');
+    if (label.length > 24) label = label.slice(0, 23) + '…';
+    const tw = ctx.measureText(label).width;
+    if (kx - tw - 14 < titleEnd) break;              // no room left: the panel lists every plan
+    ctx.fillStyle = '#7d8899'; ctx.fillText(label, kx, 9);
+    ctx.fillStyle = careColor(k); ctx.fillRect(kx - tw - 14, 5, 9, 9); kx -= tw + 28;
   }
   ctx.fillStyle = '#7d8899'; ctx.textAlign = 'left'; ctx.fillText('weeks after the injury →', L, h - 8);
 }

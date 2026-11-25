@@ -154,10 +154,14 @@ class CareService:
         plans = self.plans(cfg, prediction, judge)
         payload = care_payload(cfg, plans, prediction, prediction.get("helpers"),
                                {"name": patient.get("name"), "epicentre": epicentre, "disorder": name,
-                                "notes": patient.get("notes", []), "source": patient.get("source")},
+                                "notes": patient.get("notes", []), "source": patient.get("source"),
+                                "preset": preset, "uploaded": patient if patient.get("source") else None},
                                profile=profile)
         payload["meta"]["care"]["card"] = problem_card(cfg)
-        payload["meta"]["care"]["disease"] = next((t for t in registry.tabs() if t["name"] == name), {"name": name})
+        tabs = registry.tabs()
+        payload["meta"]["care"]["disease"] = next((t for t in tabs if t["name"] == name),
+                                                  {"name": name, "tab": name, "ai": bool((profile or {}).get("ai"))})
+        payload["meta"]["care"]["tabs"] = tabs
         return payload
 
     # ---------- uploaded patient ----------

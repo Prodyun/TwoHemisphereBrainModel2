@@ -71,6 +71,8 @@ def care_payload(cfg: dict, plans: list[tuple[str, str, dict]], prediction: dict
         entry["measures"] = {k: v for k, v in pm["measures"].items() if k != "weekly_function"}
         entry["targets"] = _targets(plan, names)
         entry["extra"] = extra_measures(run, plan, profile)    # stages, seizure crossing, bridge health
+        if "seizure" in run:
+            entry["seizure"] = _frames(run["seizure"], stride, n_frames, "max")
         if "bridge_weights" in run:   # Bridge Builder: the chosen fibres thickening, frame by frame
             bw = np.asarray(run["bridge_weights"], float)
             entry["bridge_pairs"] = [[p["from"], p["to"]] for p in plan["bridge"]["pairs"]]

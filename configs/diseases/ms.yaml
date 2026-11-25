@@ -9,7 +9,7 @@ severity: 0.7
 seed: {mode: clicked, neighbors: 4, neighbor_share: 0.6}
 engine: {type: stroke}
 config:
-  care: {days: 240}
+  care: {days: 180}
   callosal_injury:
     kind: relapsing
     relapses_per_year: 1.0      # ASSUMPTION (sweep 0.3-1.5)
@@ -31,7 +31,7 @@ plans:
     changes: {callosal_injury: {relapses_per_year: 0.5}}
 plain:
   what: "Relapses damage the bridge between the two sides."
-  simulate: "The bridge fading and partly repairing over 8 months."
+  simulate: "The bridge fading and partly repairing over 6 months."
   shows: "How the help changes as the bridge weakens."
   use: "See whether the healthy side can still help."
   limits: "Relapse timing and size are assumptions."

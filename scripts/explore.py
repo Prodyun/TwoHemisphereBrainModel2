@@ -17,6 +17,7 @@ Keep this window open while you use the viewer; press Ctrl+C here to stop.
 import argparse
 import copy
 import json
+import os
 import socket
 import sys
 import threading
@@ -85,18 +86,62 @@ def handle_predict(service: CareService, request: dict) -> tuple[int, dict]:
     return 200, out
 
 
+def patient_args(request: dict) -> dict:
+    """The patient part of a request: a clicked area, a preset, or an uploaded patient (+ slider overrides)."""
+    return {"area": request.get("area"), "severity": float(request.get("severity", 0.9)),
+            "disorder": request.get("disorder", "stroke"), "preset": request.get("preset") or None,
+            "overrides": request.get("overrides") or None, "patient": request.get("patient")}
+
+
 def handle_simulate(service: CareService, request: dict) -> tuple[int, dict]:
     t0 = time.time()
     with LOCK:
-        payload = service.simulate(area=request.get("area"), severity=float(request.get("severity", 0.9)),
-                                   disorder=request.get("disorder", "stroke"), preset=request.get("preset") or None,
-                                   start_day=request.get("start_day"), judge=request.get("judge"),
-                                   prediction=request.get("prediction"))
+        payload = service.simulate(**patient_args(request), start_day=request.get("start_day"),
+                                   judge=request.get("judge"), prediction=request.get("prediction"))
     summary = ", ".join(f"{c['label'].split(':')[0]}: week {c['measures']['weeks_to_goal']}"
                         for c in payload["conditions"].values())
     print(f"simulate {payload['meta']['care']['patient'].get('epicentre')}: {summary}  [{time.time() - t0:.1f} s]",
           flush=True)
     return 200, payload
+
+
+WORKERS = max(1, min(6, (os.cpu_count() or 2) - 2))
+UPLOADS = ROOT / "results" / "uploads"   # uploaded scans are kept here (git-ignored), never in data/
+
+
+def handle_intake(service: CareService, request: dict) -> tuple[int, dict]:
+    kind = request.get("kind")
+    data = dict(request)
+    if kind == "mask":
+        import base64
+        import re
+        name = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(request.get("filename", "mask.nii.gz")))[-80:]
+        if not name.endswith((".nii", ".nii.gz")):
+            return 400, {"error": "the lesion mask must be a .nii or .nii.gz file"}
+        UPLOADS.mkdir(parents=True, exist_ok=True)
+        path = UPLOADS / name
+        path.write_bytes(base64.b64decode(request.get("data_b64", "")))
+        data = {"path": str(path), "disorder": request.get("disorder", "stroke")}
+    with LOCK:
+        out = service.intake(kind, data)
+    print(f"intake {kind}: {len(out['patient']['damage'])} areas, epicentre {out['card']['epicentre']}", flush=True)
+    return 200, out
+
+
+def timed(name: str, fn):
+    t0 = time.time()
+    with LOCK:
+        out = fn()
+    print(f"{name} [{time.time() - t0:.1f} s]", flush=True)
+    return 200, out
+
+
+def handle_save_disease(service: CareService, request: dict) -> tuple[int, dict]:
+    from brain_model import diseases
+    path = diseases.save_custom(request)
+    prof = diseases.get(path.stem)
+    print(f"saved new disease {path}", flush=True)
+    return 200, {"name": prof["name"], "tab": prof["tab"], "tabs": diseases.tabs()}
 
 
 def make_handler(base: dict, first_page: str, service: CareService | None = None):
@@ -120,6 +165,12 @@ def make_handler(base: dict, first_page: str, service: CareService | None = None
             if service is not None:
                 routes["/api/predict"] = lambda r: handle_predict(service, r)
                 routes["/api/simulate"] = lambda r: handle_simulate(service, r)
+                routes["/api/diseases"] = lambda r: (200, {"tabs": service.diseases()})
+                routes["/api/intake"] = lambda r: handle_intake(service, r)
+                routes["/api/risk"] = lambda r: timed("risk", lambda: service.risk(**patient_args(r)))
+                routes["/api/options"] = lambda r: timed("options", lambda: service.options(WORKERS, **patient_args(r)))
+                routes["/api/healthy"] = lambda r: timed("healthy side", lambda: service.healthy_side(WORKERS, **patient_args(r)))
+                routes["/api/disease/save"] = lambda r: handle_save_disease(service, r)
             if self.path not in routes:
                 return self._send(404, b"not found", "text/plain")
             try:
@@ -154,7 +205,6 @@ def main() -> None:
     parser.add_argument("--care", default=str(ROOT / "configs" / "care.yaml"))
     args = parser.parse_args()
 
-    import os
     os.chdir(ROOT)  # config paths (e.g. data/processed/hcp_brain.npz) are relative to the project
     base = load_config(args.config)
     service = None

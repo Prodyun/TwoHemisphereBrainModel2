@@ -183,6 +183,42 @@ validation phase):
 - **The "how"** (`help_pathways.trace`): during practice, the help reaching damaged area i from healthy area j is gain × callosal route weight × j's activity matched to the practised pattern. Two-step routes through a damaged-side neighbour are included. The result is each helper's share and route type (direct fibre / two steps via X).
 - **Live demo:** `care_service.py` + `visualization/care_view.py` + the viewer's patient-care mode (AI panel, help arcs, therapy banner, weekly chart).
 
+## The Clinic: every disease, an uploaded patient, and the healthy side as a treatment
+
+The explorer (`scripts/explore.py`) has one tab per disease, built from `configs/diseases/*.yaml` by
+`diseases.py` (docs/diseases.md). For any patient it answers, in order:
+
+1. **Where** (`intake.py`): the damage on the 180 areas per side, from one of:
+   - a lesion mask in MNI space, overlapped with the volumetric Glasser atlas;
+   - an area table (damage, or tau-PET SUVR);
+   - a no-scan symptom check plus an EEG symmetry index.
+2. **What spreads next** (`spread_risk.py`): an ensemble of untreated spreads with uncertain speeds.
+   It gives the chance that each area is reached by day 30, 90 or 180, plus the next areas.
+   Stroke shows its at-risk ring, MS/TBI the bridge fibres at risk, epilepsy the areas seizures recruit.
+3. **Which treatment is fastest** (`care_service.options`): every option is raced and ranked by weeks to
+   the goal. Each one carries a badge from `configs/evidence.yaml` (FDA approved / in trials / model idea).
+   The race also gives a dose curve for the helper area, with the smallest dose that works.
+4. **The healthy side treats the damaged side** (`connectivity/bridge_therapy.py`, `healthy_side.py`):
+   - *Bridge Builder*: paired stimulation (ccPAS) strengthens one chosen callosal fibre. It is compared
+     with the reverse order, a random sender and the split brain.
+   - *Mirror Drive*: healthy-side activity triggers stimulation of the damaged side in a closed loop.
+     It is compared with the same dose given at fixed or random times.
+   - *Help-or-Hinder*: EXCITE, CALM or LEAVE the healthy side.
+   - *Hand-off*: weaning schedules, scored by function after the help stops.
+
+New disease engines:
+
+- epilepsy: an excitable focus with seizures (`lesion.py`, plus `excitability` / `seizure_drive` in `hemispheres/base.py`);
+- damage to the bridge itself (`connectivity/callosal_injury.py`): MS relapses and TBI axonal injury;
+- multi-seed spreading on both sides.
+
+All defaults leave earlier runs unchanged.
+
+`scripts/validate_trials.py` (R-EXP-10) checks virtual cohorts against three trials:
+
+- NICHE/E-FIT: an independent test;
+- VNS-REHAB and CPASS: calibration checks, because their numbers set the model.
+
 ## Assumptions and limitations (say these on the poster)
 
 - The wiring is a **group average** of many people, not one person's brain.
@@ -210,6 +246,11 @@ validation phase):
   - how fast the golden period closes
 - For a language patient, "physical" practice means speaking out loud and "imagery" means
   inner speech.
+- Clinic diseases other than stroke and tumour are simulation only (the AI was not trained on them).
+  Their time is compressed, the Braak stages are mapped to Glasser areas by this project, the model has no
+  thalamus, basal ganglia or spinal cord, and the MS/TBI/epilepsy rates are assumptions (docs/factors.md).
+- One step is one hour, so Bridge Builder keeps only the ORDER of the paired pulses (not their millisecond
+  gap), and one epilepsy step stands for one seizure.
 
 ## Where things live
 
@@ -220,7 +261,7 @@ validation phase):
 | Shared hemisphere logic, job patterns | `src/brain_model/hemispheres/base.py` |
 | Left / right hemisphere | `src/brain_model/hemispheres/left.py`, `right.py` |
 | Corpus callosum + plasticity | `src/brain_model/connectivity/corpus_callosum.py` |
-| Disorder (spreading, stroke, tumour, damage map) | `src/brain_model/lesion.py` |
+| Disorder (spreading, stroke, tumour, epilepsy, damage map) | `src/brain_model/lesion.py` |
 | Healing (use-dependent recovery, golden period) | `src/brain_model/recovery.py` |
 | Practice modes, repetition counting, brain stimulation | `src/brain_model/therapy.py` |
 | Patient file -> config; problem card | `src/brain_model/patient.py` |
@@ -230,6 +271,14 @@ validation phase):
 | Help pathways (how the healthy side helps) | `src/brain_model/help_pathways.py` |
 | AI Help Predictor: data, features, model | `src/brain_model/help_data.py`, `help_model.py` |
 | Live demo logic; viewer data for care | `src/brain_model/care_service.py`, `visualization/care_view.py` |
+| Disease registry (one tab per disease) | `src/brain_model/diseases.py`, `configs/diseases/*.yaml` |
+| Patient intake (mask / table / symptoms + EEG) | `src/brain_model/intake.py` |
+| Spread-risk map | `src/brain_model/spread_risk.py` |
+| Bridge Builder, Mirror Drive (mechanisms) | `src/brain_model/connectivity/bridge_therapy.py` |
+| Help-or-Hinder, Hand-off, pair search (plans) | `src/brain_model/healthy_side.py` |
+| Damage to the bridge (MS, TBI) | `src/brain_model/connectivity/callosal_injury.py` |
+| Treatment options mapped to devices and trials | `configs/evidence.yaml` |
+| Validation against trials | `scripts/validate_trials.py` |
 | Whole brain | `src/brain_model/brain.py` |
 | Experiment and scoring | `src/brain_model/simulation/runner.py` |
 | Resting brain + fitting to fMRI | `src/brain_model/simulation/rest.py`, `fit.py` |

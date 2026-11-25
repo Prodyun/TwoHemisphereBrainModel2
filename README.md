@@ -154,6 +154,42 @@ Click any of the 360 areas. The AI Help Predictor (gradient-boosted trees traine
 
 The plain-language guide is [docs/how_it_works.md](docs/how_it_works.md). What is new compared with published work is in [docs/novelty.md](docs/novelty.md).
 
+## The Clinic: every disease, your own patient, and the healthy side as a treatment
+
+`python scripts/explore.py` opens the explorer with a tab for each disease:
+
+- Stroke
+- Tumour
+- Alzheimer's
+- Parkinson's (cortex only)
+- ALS
+- MS
+- TBI
+- Epilepsy
+
+The panel answers first, in a few big tiles and one sentence. Everything else is under **Details ▸**, and
+**Clinician details** adds scales, assumptions and sources. The buttons:
+
+- **Upload a patient**: a lesion mask (MNI space), an area table (damage or tau-PET SUVR), or a no-scan
+  symptom check with optional EEG asymmetry. Uploads are kept in `results/uploads/`, never in `data/`.
+- **Spread risk**: the chance each area is reached by day 30, 90 or 180 (the brain turns yellow to red),
+  and the next areas.
+- **All options**: every therapy, fastest first. Each has a badge (FDA approved / in trials / model idea)
+  and its device or trial; the race also suggests the smallest stimulation dose that works.
+- **Healthy side helps**:
+  - *Bridge Builder*: personalised paired stimulation that strengthens one bridge fibre.
+  - *Mirror Drive*: healthy-side activity triggers stimulation of the damaged side.
+  - *Help-or-Hinder*: excite, calm or leave the healthy side.
+  - *Hand-off*: when to stop helping.
+- **Build a new disease**: saves `configs/diseases/custom_<name>.yaml` as a new tab. How to write one by
+  hand: [docs/diseases.md](docs/diseases.md).
+
+```powershell
+python scripts/validate_trials.py        # does the model reproduce NICHE/E-FIT, VNS-REHAB, CPASS? -> results/validation/
+```
+
+What already exists in research and industry, and the gap this fills: [docs/literature.md](docs/literature.md).
+
 ## Running your own experiment
 
 1. Copy `configs/hcp.yaml` to a new file, e.g. `configs/stroke_right.yaml`, and change settings

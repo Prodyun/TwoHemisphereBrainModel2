@@ -59,13 +59,49 @@ the poster.
 | `plasticity_rate`, `plasticity_gain`, `takeover_gain` | adaptation after damage | 0.02, 1.5, 3.0 | configs/hcp.yaml |
 | `inhibition` | the interhemispheric "brake" | 0 (off) | bimodal balance model: Di Pino 2014 Nat Rev Neurol |
 
-## Disorders (`care.yaml: disorders`)
+## Diseases (`configs/diseases/*.yaml`, one tab each; see docs/diseases.md)
 
-| Disorder | Behaviour | Factors |
+| Engine (`engine.type`) | Behaviour | Factors |
 |---|---|---|
 | stroke | the core is hit at once; the surrounding at-risk tissue (penumbra) starts at `penumbra_start` (30%) of its final damage and dies off over `penumbra_days`; no spread along the wiring | `penumbra_days` 5, `penumbra_start` 0.3 (assumption; real penumbra is lost over hours to days) |
 | tumor | the centre grows to max over `growth_steps`, with pressure on neighbours | `growth_steps` 480 (20 days), `pressure` 0.3 |
-| spreading | starts in the clicked area and travels along the wiring (network Fisher-Kolmogorov) | care runs: `transport` 0.001, `growth` 0.0016 (~12 areas by day 60, ~60 by day 120); the 960-step experiment keeps 0.002 / 0.0105 |
+| spreading | travels along the wiring (network Fisher-Kolmogorov); seeds can be on both sides | care runs: `transport` 0.001, `growth` 0.0016 (~12 areas by day 60, ~60 by day 120); `cross_spread` (0 = the bridge does not carry it); the 960-step experiment keeps 0.002 / 0.0105 |
+| epilepsy | an over-excitable focus with random seizures | `excitability` 1.6 (sweep 1.2–2.0), `seizures_per_day` 1, `seizure_drive` 2.5, `seizure_steps` 1 (one step = one seizure): all assumptions |
+
+`callosal_injury` (MS, TBI; `connectivity/callosal_injury.py`): every number below is an assumption with a sweep range. The papers show that the callosum is damaged (Evangelou 2000, Ozturk 2010, Johnson 2013), not how fast.
+
+| Factor | MS default | TBI default | Meaning |
+|---|---|---|---|
+| `kind` | relapsing | hit | random relapses vs. one injury |
+| `relapses_per_year` | 1.0 (0.3–1.5) | – | relapse rate |
+| `areas_per_relapse` / `fraction` | 60 areas | 60% of areas | how much of the bridge one hit reaches |
+| `severity` | 0.6 | 0.4 | share of an area's callosal input lost |
+| `recover_fraction`, `recover_days` | 0.5, 45 | 0.4, 90 | repair (remyelination) |
+| `progressive_per_year` | 0.1 | – | slow loss between relapses |
+
+## Healthy side helps (`care.yaml: bridge`; `connectivity/bridge_therapy.py`, `healthy_side.py`)
+
+| Factor | Meaning | Default | Range / source |
+|---|---|---|---|
+| `pair.rate` | Bridge Builder: share of the remaining gain added per paired session step | 0.05 | assumption, sweep 0.01–0.1 |
+| `pair.max_gain` | cap on the extra fibre strength (× the average measured fibre) | 2.0 | assumption, 0.5–3 |
+| `pair.decay_per_day` | fading when not refreshed | 0.01 | assumption; ccPAS after-effects are short per session (Falaschi 2025 review) |
+| `pair.order` | forward (healthy then damaged) strengthens; reverse weakens (the control) | forward | Hebbian timing rule of ccPAS |
+| `mirror_drive.gain` | stimulation per unit of healthy-side activity | 2.0 | assumption, 0.5–3 |
+| `mirror_drive.threshold` | minimum healthy-side activity that triggers | 0.05 | assumption |
+| `mirror_drive.timing` | closed loop, or the same dose at fixed (open) or random times | closed | controls get the closed loop's measured share |
+| `stimulation.taper` | Hand-off: `{kind: step / linear / exp, from_day, to_day}` | none | therapy.taper_factor |
+| `care.meaningful_change` | a plan only "wins" if it reaches the goal sooner or ends ≥ 1 point higher | 0.01 | assumption |
+
+## Intake and spread risk
+
+| Factor | Meaning | Default | Source |
+|---|---|---|---|
+| mask overlap | areas with < 2% of their voxels in the lesion are ignored | 2% | assumption |
+| tau-PET `cutoff` | SUVR above which an area counts as having tau | 1.2 | assumption; published cut-offs ~1.2–1.4 depend on tracer and region |
+| EEG symmetry index | `|L − R| / (L + R)` of slow-wave power; ≥ 0.1 = one side | 0.1 | ELECTRA-STROKE (delta BSI AUC 0.91) |
+| risk ensemble | runs, and spread speed range | 30 runs, 0.5–1.5× | assumption |
+| "reached" | damage at or above | 10% | as in the viewer |
 
 Still to come in later phases: containment, the detection markers, patient biomarkers, the
 area-atlas genes and receptors, and the brain-reserve scaling.
