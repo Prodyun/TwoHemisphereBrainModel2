@@ -1,0 +1,51 @@
+# EPILEPSY: an over-excitable focus whose seizures can cross the bridge. Here the bridge can HARM.
+name: epilepsy
+tab: Epilepsy
+icon: "ϟ"
+order: 8
+ai: false
+default_area: L_H
+severity: 0.2          # small damage at the focus (e.g. hippocampal sclerosis)
+seed: {mode: clicked, neighbors: 2, neighbor_share: 0.5}
+engine:
+  type: epilepsy
+  excitability: 1.6         # ASSUMPTION (sweep 1.2-2.0)
+  excitability_neighbors: 3
+  seizures_per_day: 1.0     # ASSUMPTION
+  seizure_steps: 1          # one step = one seizure episode (ASSUMPTION; real seizures last ~1-2 min)
+  seizure_drive: 2.5        # ASSUMPTION
+extra_jobs:
+  memory:
+    areas: [EC, PreS, H, PeEc, PHA1, PHA2, PHA3, RSC, POS1, v23ab]
+    pattern: sine
+    params: {period: 90, phase: 0.0}
+job: memory
+config:
+  care: {days: 60}
+plans:
+  - {key: no_treatment, label: "No treatment", changes: {therapy: {mode: none}}}
+  - key: calm_focus
+    label: "Calm the focus (like responsive neurostimulation)"
+    changes: {therapy: {mode: none}, stimulation: {paired: false, start_day: 0, targets: [{area: "@epicentre", strength: -0.4}]}}
+  - key: split
+    label: "Callosotomy (cut the bridge)"
+    changes: {therapy: {mode: none}, corpus_callosum: {strength: 0.0}}
+plain:
+  what: "One area fires too easily and sets off seizures."
+  simulate: "Seizures, and whether they cross to the other side."
+  shows: "How much of each seizure crosses the bridge (little, here)."
+  use: "Compare calming the focus with cutting the bridge."
+  limits: "No thalamus, so seizures cannot generalise the usual way."
+clinician:
+  scale: "Crossing = share of the seizure's push that reaches the focus's partners on the other side."
+  today: "Callosotomy reduces drop attacks (Asadi-Pooya 2008); RNS calms the focus (Morrell 2011)."
+sliders:
+  - {key: lesion.seizures_per_day, label: "Seizures per day", min: 0.25, max: 3.0, step: 0.25}
+  - {key: lesion.excitability, label: "Focus excitability", min: 1.1, max: 2.2, step: 0.1}
+assumptions:
+  - "Excitability and seizure numbers are assumptions with sweep ranges."
+  - "Crossing near 0.03 is within the model's noise (the cut-bridge run shows the noise level)."
+sources:
+  - "Asadi-Pooya et al. 2008 (corpus callosotomy outcomes)"
+  - "Morrell et al. 2011 Neurology (responsive neurostimulation trial)"
+  - "Jirsa et al. 2017 NeuroImage (Virtual Epileptic Patient)"

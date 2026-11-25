@@ -1,0 +1,43 @@
+# PARKINSON'S DISEASE (cortical stage only): alpha-synuclein reaches the cortex late (Braak PD stages 4-6).
+name: parkinsons
+tab: "Parkinson's"
+icon: "∿"
+order: 4
+ai: false
+severity: 0.5
+# Braak 2003: the cortex is first reached at the anteromedial temporal mesocortex (stage 4); onset is
+# usually one-sided, so the left side starts worse here (example)
+seed:
+  mode: areas
+  areas: {PeEc: 0.6, EC: 0.5, TGd: 0.4}
+  sides: {left: 1.0, right: 0.5}
+engine: {type: spreading, model: fisher_kpp, transport: 0.001, growth: 0.0016, cross_spread: 0.0}
+job: movement
+config:
+  care: {days: 180}
+stages:
+  - {name: "Stage 4 (temporal mesocortex)", areas: [PeEc, EC, TGd]}
+  - {name: "Stage 5 (association + prefrontal)", areas: ["46", 9-46d, a9-46v, TE1p, PGi]}
+  - {name: "Stage 6 (premotor + primary)", areas: [6d, 6a, 6mp, "4", 3b, "1"]}
+plans:
+  - {key: standard_care, label: "Movement practice", changes: {therapy: {mode: physical}}}
+  - key: helped
+    label: "Practice + excite the healthy-side motor cortex"
+    changes: {stimulation: {targets: [{area: "@mirror", strength: 0.5}]}}
+plain:
+  what: "A protein spreads through the brain; one side starts first."
+  simulate: "The cortical spread and the left-right difference."
+  shows: "The left-right difference as an early warning sign."
+  use: "Watch asymmetry to spot change early."
+  limits: "Cortex only: no substantia nigra or basal ganglia."
+clinician:
+  scale: "Movement score is a model proxy, not UPDRS."
+  today: "Real PD starts in the brainstem and substantia nigra years before the cortex."
+sliders:
+  - {key: severity, label: "Starting level", min: 0.2, max: 0.9, step: 0.05}
+assumptions:
+  - "Cortex only; the motor symptoms of real PD come from the basal ganglia."
+  - "Time compressed; Braak stages mapped to Glasser areas by this project."
+sources:
+  - "Braak et al. 2003 Neurobiol Aging (PD stages)"
+  - "Raj et al. 2012 Neuron (network diffusion of disease)"

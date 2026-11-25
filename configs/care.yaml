@@ -68,16 +68,8 @@ bridge:
 # plus its strongest same-side neighbours (not used by other jobs), driven by a steady rhythm.
 local_job: {neighbors: 5, period: 60}
 
-# How each disorder behaves once the patient's damage map is in place.
-disorders:
-  # stroke: the core is hit at once; the surrounding at-risk tissue (penumbra) starts at 30% of its
-  # final damage and dies off over penumbra_days (in real strokes the penumbra is lost over hours to
-  # days unless blood flow returns: the reason "time is brain").
-  stroke: {type: stroke, penumbra_days: 5, penumbra_start: 0.3}
-  tumor: {type: tumor, growth_steps: 480, pressure: 0.3, pressure_neighbors: 4}
-  # spreading (prion-like, e.g. tau / alpha-synuclein): starts in the clicked area only and travels
-  # along the wiring; rates set for the 4-month care runs (slower than the 960-step experiment)
-  spreading: {type: spreading, model: fisher_kpp, transport: 0.001, growth: 0.0016}   # ~12 areas by day 60, ~60 by day 120
+# How each disease behaves: one profile per disease in configs/diseases/*.yaml (diseases.py), one explorer
+# tab each. Older patient files with disorder: stroke | tumor | spreading use those profiles.
 
 # Today's standard healthy-side targets, used as the comparison for the model's personal targets.
 standard_targets:

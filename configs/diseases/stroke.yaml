@@ -1,0 +1,30 @@
+# STROKE: sudden damage to one side (a clot or a bleed). The AI Help Predictor is trained on this disease.
+name: stroke
+tab: Stroke
+icon: "⚡"
+order: 1
+ai: true
+default_area: L_6d
+severity: 0.9
+seed: {mode: clicked, neighbors: 4, neighbor_share: 0.6}
+# the core is hit at once; the at-risk ring (penumbra) starts at 30% of its final damage and dies off over
+# 5 days unless blood flow returns ("time is brain"). Penumbra numbers: ASSUMPTION (real: hours to days)
+engine: {type: stroke, penumbra_days: 5, penumbra_start: 0.3}
+plain:
+  what: "A clot or bleed suddenly kills part of one side."
+  simulate: "The damage, the at-risk ring, and 4 months of care."
+  shows: "Where to stimulate the healthy side, and the weeks it saves."
+  use: "Choose each patient's stimulation target and therapy."
+  limits: "Example damage maps; real ones come from a lesion scan."
+clinician:
+  scale: "Movement score is a model proxy for Fugl-Meyer (not a clinical score)."
+  today: "Standard comparison: 1 Hz rTMS calming the healthy M1 (NICHE / E-FIT: not better than sham)."
+sliders:
+  - {key: severity, label: "How bad", min: 0.3, max: 0.95, step: 0.05}
+assumptions:
+  - "Penumbra timing is an assumption."
+  - "One model step = one hour."
+sources:
+  - "Dromerick et al. 2021 PNAS (CPASS: golden period)"
+  - "Dawson et al. 2021 Lancet (VNS-REHAB)"
+  - "Harvey et al. 2018 Neurorehabil Neural Repair (NICHE); E-FIT, Stroke 2023"

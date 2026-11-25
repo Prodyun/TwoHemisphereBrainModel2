@@ -20,6 +20,16 @@
                neighbours feel a weaker "pressure" (`pressure` x the centre's damage). No travelling
                front. Slow growth gives the healthy side time to adapt (Pasquini 2023; Ng 2023).
 
+  * epilepsy:  a seizure focus. The focus (and its `excitability_neighbors` most strongly linked areas,
+               at half the extra) is over-excitable (`excitability` x normal), and seizures arrive at
+               random (`seizures_per_day`): for `seizure_steps` steps the focus gets a strong extra
+               drive (`seizure_drive`) that can recruit its neighbours and, through the corpus
+               callosum, the other hemisphere. No damage spreads. Cutting the callosum
+               (corpus callosotomy) is a real treatment that stops seizures crossing over
+               (Asadi-Pooya et al. 2008); calming stimulation at the focus is like responsive
+               neurostimulation. One step stands for one seizure episode (ASSUMPTION: real seizures last
+               about 1-2 minutes, a step is one hour).
+
 Where it starts: `region` (an area name such as "L_44", Broca's area; real brain only),
 `location` (x, y, z: the nearest area is chosen), or `damage_map` ({area name: damage}, real brain
 only): a patient's measured damage, on one or BOTH hemispheres (e.g. from a lesion scan). The most
@@ -51,8 +61,8 @@ class Lesion:
         self.transport = cfg.get("transport", 0.0)
         self.growth = cfg.get("growth", 0.0)
         self.W_len = {h.name: self._length_weighted(h) for h in (target, other)}
-        if self.kind not in ("spreading", "stroke", "tumor"):
-            raise ValueError("lesion.type must be 'spreading', 'stroke' or 'tumor'")
+        if self.kind not in ("spreading", "stroke", "tumor", "epilepsy"):
+            raise ValueError("lesion.type must be 'spreading', 'stroke', 'tumor' or 'epilepsy'")
         self.start_step = cfg["start_step"]
         self.initial_damage = cfg["initial_damage"]
         self.spread_rate = cfg.get("spread_rate", 0.0)
@@ -65,6 +75,14 @@ class Lesion:
         self.pressure_neighbors = cfg.get("pressure_neighbors", 4)
         self.penumbra_steps = int(cfg.get("penumbra_steps", 0))
         self.penumbra_start = float(cfg.get("penumbra_start", 0.3))
+        self.excitability = float(cfg.get("excitability", 1.5))
+        self.excitability_neighbors = int(cfg.get("excitability_neighbors", 3))
+        self.seizure_p = float(cfg.get("seizures_per_day", 0.5)) / max(1, int(cfg.get("steps_per_day", 24)))
+        self.seizure_steps = int(cfg.get("seizure_steps", 1))
+        self.seizure_drive = float(cfg.get("seizure_drive", 2.0))
+        self._rng = np.random.default_rng(int(cfg.get("seizure_seed", 0)))
+        self._seizure_left = 0
+        self.seizing = False
         self.damage_map = self._read_map(cfg.get("damage_map"))
         if self.damage_map:
             on_target = self.damage_map[target.name]
@@ -107,7 +125,15 @@ class Lesion:
     def _penumbra(self) -> bool:
         return self.kind == "stroke" and self.penumbra_steps > 0 and bool(self.damage_map)
 
+    def _focus(self) -> list[int]:
+        row = self.target.W[self.center_region]
+        return [i for i in np.argsort(row)[::-1][: self.excitability_neighbors] if row[i] > 0]
+
     def _start(self) -> None:
+        if self.kind == "epilepsy":
+            ex = self.target.excitability
+            ex[self._focus()] = np.maximum(ex[self._focus()], 1.0 + 0.5 * (self.excitability - 1.0))
+            ex[self.center_region] = self.excitability
         if self.damage_map:
             for hemi in (self.target, self.other):
                 for i, value in self.damage_map[hemi.name].items():
@@ -134,6 +160,9 @@ class Lesion:
         if self.kind == "tumor":
             self._grow_tumor(t)
             return
+        if self.kind == "epilepsy":
+            self._seizures()
+            return
         d_target, d_other = self.target.damage, self.other.damage  # use values from before this step
         for hemi, d, leak_in in ((self.target, d_target, self.into_target(d_other)),
                                  (self.other, d_other, self.into_other(d_target))):
@@ -156,6 +185,18 @@ class Lesion:
                 if hemi is self.target and i == self.center_region:
                     continue
                 hemi.damage[i] = max(hemi.damage[i], min(share * value, self.max_damage))
+
+    def _seizures(self) -> None:
+        """Start or continue a seizure: a strong extra drive at the focus (it acts on the next step)."""
+        if self._seizure_left == 0 and self._rng.random() < self.seizure_p:
+            self._seizure_left = self.seizure_steps
+        drive = self.target.seizure_drive
+        drive[:] = 0.0
+        self.seizing = self._seizure_left > 0
+        if self.seizing:
+            drive[self.center_region] = self.seizure_drive
+            drive[self._focus()] = 0.5 * self.seizure_drive
+            self._seizure_left -= 1
 
     def _grow_tumor(self, t: int) -> None:
         """Slow growth at the centre plus pressure on its strongest neighbours (no front)."""

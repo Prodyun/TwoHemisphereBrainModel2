@@ -5,6 +5,7 @@ import numpy as np
 from . import anatomy
 from .connectivity import CorpusCallosum
 from .connectivity.bridge_therapy import BridgeTherapy
+from .connectivity.callosal_injury import CallosalInjury
 from .hemispheres import LeftHemisphere, RightHemisphere
 from .lesion import Lesion
 from .recovery import Recovery
@@ -29,7 +30,7 @@ class Brain:
                                        cc.get("plasticity_gain", 0.0), cc.get("takeover_gain", 0.0),
                                        into_left, into_right, cc.get("inhibition", 0.0))
         self.lesion = None
-        self.therapy = self.stimulation = self.recovery = self.bridge = None
+        self.therapy = self.stimulation = self.recovery = self.bridge = self.callosal_injury = None
         self.trained = None
         if with_lesion and config.get("lesion"):
             target_name = config["lesion"]["hemisphere"]
@@ -40,7 +41,11 @@ class Brain:
                 pair, routes = (self.left, self.right), (cc_.route_into_left, cc_.route_into_right)
             else:
                 pair, routes = (self.right, self.left), (cc_.route_into_right, cc_.route_into_left)
-            self.lesion = Lesion(config["lesion"], *pair, *routes)
+            self.lesion = Lesion({"steps_per_day": steps_per_day(config), **config["lesion"]}, *pair, *routes)
+            if config.get("callosal_injury"):
+                self.callosal_injury = CallosalInjury(config["callosal_injury"], self.callosum, steps_per_day(config),
+                                                      self.lesion.start_step,
+                                                      np.random.default_rng(config["seed"] + 13))
             self._patient_care(config, pair[0], pair[1])
         self.reps_physical = self.reps_mental = 0.0
 
@@ -95,6 +100,8 @@ class Brain:
                         own_scale=brake_right * stim["right"], extra=extra["right"])
         if self.lesion:
             self.lesion.update(t)
+        if self.callosal_injury:
+            self.callosal_injury.update(t)
         if self.recovery:
             for hemi in (self.left, self.right):
                 use = None
@@ -129,6 +136,10 @@ class Brain:
             out["bci_fired"] = bool(practice is not None and practice.bci_fired)
             out["reps_physical"] = self.reps_physical
             out["reps_mental"] = self.reps_mental
+        if self.lesion is not None and self.lesion.kind == "epilepsy":
+            out["seizure"] = self.lesion.seizing
+        if self.callosal_injury:
+            out["callosal_integrity"] = self.callosal_injury.mean_integrity()
         if self.bridge:
             out["bridge_fired"] = self.bridge.last_fired
             out["bridge_weights"] = self.bridge.pair_weights()

@@ -1,0 +1,23 @@
+# TUMOUR: a slow-growing mass. The AI Help Predictor is trained on this disease.
+name: tumor
+tab: Tumour
+icon: "●"
+order: 2
+ai: true
+default_area: R_FFC
+severity: 0.8
+seed: {mode: clicked, neighbors: 4, neighbor_share: 0.6}
+engine: {type: tumor, growth_steps: 480, pressure: 0.3, pressure_neighbors: 4}   # 20 days to full size (assumption)
+plain:
+  what: "A mass grows slowly and presses on its neighbours."
+  simulate: "Slow growth, pressure, and the healthy side adapting."
+  shows: "Slow damage gives the healthy side time to take over."
+  use: "Plan therapy and stimulation around surgery."
+  limits: "Growth speed is an assumption; no surgery is modelled."
+clinician:
+  scale: "Function score is a model proxy, not a clinical score."
+sliders:
+  - {key: severity, label: "Size", min: 0.3, max: 0.95, step: 0.05}
+assumptions: ["Growth speed and pressure are assumptions."]
+sources:
+  - "Pasquini et al. 2023; Ng et al. 2023 (slow lesions allow reorganisation)"

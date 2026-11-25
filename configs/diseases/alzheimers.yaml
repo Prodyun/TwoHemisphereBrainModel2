@@ -1,0 +1,55 @@
+# ALZHEIMER'S DISEASE: tau spreads from the memory areas along the wiring (Braak stages).
+name: alzheimers
+tab: "Alzheimer's"
+icon: "◌"
+order: 3
+ai: false
+severity: 0.6
+# Braak I-II: transentorhinal / entorhinal cortex, both sides (left a little more, as an example)
+seed:
+  mode: areas
+  areas: {EC: 0.6, PeEc: 0.5}
+  sides: {left: 1.0, right: 0.8}
+engine: {type: spreading, model: fisher_kpp, transport: 0.001, growth: 0.0016, cross_spread: 0.0}
+extra_jobs:
+  memory:            # medial temporal + posterior medial memory network (literature-chosen areas)
+    areas: [EC, PreS, H, PeEc, PHA1, PHA2, PHA3, RSC, POS1, v23ab]
+    pattern: sine
+    params: {period: 90, phase: 0.0}
+job: memory
+config:
+  care: {days: 180}
+# Braak & Braak 1991 stages mapped by this project to Glasser areas (approximate)
+stages:
+  - {name: "Braak I-II (entorhinal)", areas: [EC, PeEc]}
+  - {name: "Braak III-IV (limbic)", areas: [H, PreS, ProS, PHA1, PHA2, TF, TE2a, TGv]}
+  - {name: "Braak V (association cortex)", areas: [PGi, PFm, TE1p, STSvp, "46", 9-46d, PCV, 7m]}
+  - {name: "Braak VI (primary cortex)", areas: [V1, "4", 3b, A1]}
+plans:
+  - {key: standard_care, label: "Memory training", changes: {therapy: {mode: physical}}}
+  - key: helped
+    label: "Training + excite the healthy partner"
+    changes: {stimulation: {targets: [{area: "@mirror", strength: 0.5}]}}
+  - key: bridge_spreads
+    label: "Training, but tau also crosses the bridge"
+    changes: {lesion: {cross_spread: 0.5}}
+plain:
+  what: "Tau protein spreads from the memory areas along the wiring."
+  simulate: "The tau front, stage by stage, and memory over 6 months."
+  shows: "Help from the other side vs. the bridge also spreading tau."
+  use: "See which areas are next, and when to act."
+  limits: "Time is compressed (real Alzheimer's takes years)."
+clinician:
+  scale: "Memory score is a model proxy (MMSE-like), not a clinical score."
+  today: "Tau-PET shows the stage; connectome models predict the next areas (Franzmeier 2020)."
+sliders:
+  - {key: severity, label: "Starting tau", min: 0.2, max: 0.9, step: 0.05}
+  - {key: lesion.cross_spread, label: "Tau crosses the bridge", min: 0.0, max: 1.0, step: 0.1}
+assumptions:
+  - "Spread rates are set so the stages unfold in 6 months (time compressed)."
+  - "Braak stages mapped to Glasser areas by this project (approximate)."
+  - "Memory training is modelled like practice of the memory job."
+sources:
+  - "Braak & Braak 1991 Acta Neuropathol (stages)"
+  - "Franzmeier et al. 2020 Sci Adv (tau spreads along connectivity)"
+  - "Vogel et al. 2020 Nat Commun; Weickenmeier et al. 2019 (network spread models)"

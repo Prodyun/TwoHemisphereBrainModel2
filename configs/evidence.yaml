@@ -1,0 +1,49 @@
+# Each treatment option in the explorer's "options race", mapped to the real device or trial behind it.
+# status: approved (FDA approved / authorised) | trials (tested in trials, not standard) | model (this
+# project's idea, never tested in people). Shown as a badge next to each option.
+options:
+  physical:
+    name: "Physical practice"
+    status: standard
+    basis: "Standard rehabilitation (repetitive task practice)."
+    source: "Lang et al. 2016 Ann Neurol (dose of repetitions)"
+  imagery:
+    name: "Imagined practice"
+    status: trials
+    basis: "Motor imagery; uses premotor areas more than M1."
+    source: "Hardwick et al. 2018 Neurosci Biobehav Rev"
+  bci_healthy:
+    name: "Brain-computer interface (reads the healthy side)"
+    status: approved
+    basis: "IpsiHand: an EEG headset reads the healthy hemisphere and moves a hand orthosis."
+    source: "FDA De Novo authorisation 2021 (Neurolutions IpsiHand)"
+  vns:
+    name: "Practice + paired vagus nerve stimulation"
+    status: approved
+    basis: "Vivistim: VNS paired with each repetition, about doubled the response rate."
+    source: "Dawson et al. 2021 Lancet (VNS-REHAB); FDA approval 2021"
+  calm_healthy:
+    name: "Calm the healthy motor cortex (1 Hz rTMS)"
+    status: trials
+    basis: "Navigated 1 Hz rTMS to the healthy M1: not better than sham in NICHE and E-FIT."
+    source: "Harvey et al. 2018 (NICHE); E-FIT, Stroke 2023"
+  excite_helper:
+    name: "Excite the model's helper area (rTMS)"
+    status: model
+    basis: "The healthy-side area that carries the most help in this patient's model."
+    source: "This project (personalised target); personalised rTMS trials are at protocol stage (NCT06270238)"
+  bridge_builder:
+    name: "Bridge Builder (paired stimulation, ccPAS)"
+    status: trials
+    basis: "Paired pulses healthy -> damaged area; a Phase II trial beat sham. The pair choice is the model's."
+    source: "Brain Communications 2024 (ccPAS Phase II, 44 patients); Falaschi et al. 2025 review"
+  mirror_drive:
+    name: "Mirror Drive (healthy side triggers stimulation)"
+    status: model
+    basis: "Closed loop like CCFES (healthy hand drives the weak hand), but brain to brain."
+    source: "Knutson et al. 2016 Stroke (CCFES); brain-state TMS feasibility, Front Neurol 2024"
+  split:
+    name: "Same practice, split brain (control)"
+    status: control
+    basis: "The bridge cut: shows how much of the result comes from the other side."
+    source: "This project's control"

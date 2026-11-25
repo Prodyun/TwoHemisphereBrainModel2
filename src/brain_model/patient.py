@@ -3,7 +3,7 @@
 A patient file (YAML) looks like:
 
     name: "Left 6d stroke"
-    disorder: stroke             # stroke | tumor | spreading
+    disorder: stroke             # any disease profile in configs/diseases/ (stroke, tumor, alzheimers, ...)
     damage: {L_6d: 0.9, L_6a: 0.5, L_4: 0.4}   # area name -> damage (0 healthy .. 1 destroyed)
     therapy: {mode: imagery}     # optional overrides of configs/care.yaml
     biomarkers: {}               # optional (later phases)
@@ -103,16 +103,23 @@ def patient_config(base: dict, care: dict, patient: dict) -> dict:
     damage = {str(k): float(v) for k, v in patient["damage"].items()}
     side = damaged_side(damage)
     disorder = patient.get("disorder", "stroke")
-    if disorder not in care["disorders"]:
-        raise ValueError(f"unknown disorder '{disorder}' (choose from {sorted(care['disorders'])})")
+    from .diseases import add_jobs, engine_settings
+    from .diseases import get as get_disease
+    from .diseases import profiles as all_profiles
+    profile = get_disease(disorder)
+    if profile is None and disorder not in care.get("disorders", {}):
+        known = sorted(set(all_profiles()) | set(care.get("disorders", {})))
+        raise ValueError(f"unknown disorder '{disorder}' (choose from {known})")
+    if profile is not None:
+        cfg = add_jobs(deep_merge(cfg, profile.get("config", {})), profile)
     spd = steps_per_day(cfg)
     c = cfg["care"]
     onset = int(c["onset_day"] * spd)
     cfg["steps"] = int((c["onset_day"] + c["days"]) * spd)
-    cfg["frame_stride"] = max(cfg.get("frame_stride", 4), spd // 2)
+    cfg["frame_stride"] = max(cfg.get("frame_stride", 4), spd // 2, cfg["steps"] // 300)   # <= ~300 viewer frames
     lesion = {**cfg["lesion"], "hemisphere": side, "region": None, "damage_map": damage,
               "start_step": onset, "cross_spread": 0.0}
-    lesion.update(care["disorders"][disorder])
+    lesion.update(engine_settings(profile) if profile is not None else care["disorders"][disorder])
     if "penumbra_days" in lesion:   # days -> model steps
         lesion["penumbra_steps"] = int(lesion.pop("penumbra_days") * spd)
     cfg["lesion"] = lesion
@@ -120,7 +127,8 @@ def patient_config(base: dict, care: dict, patient: dict) -> dict:
                            if k in patient})
     on_side = {k: v for k, v in damage.items() if k.startswith("L_" if side == "left" else "R_")}
     epicentre = max(on_side, key=on_side.get)
-    job = ensure_job(cfg, side, epicentre, care)
+    wanted = (profile or {}).get("job")
+    job = wanted if wanted in cfg[f"{side}_hemisphere"]["functions"] else ensure_job(cfg, side, epicentre, care)
     if cfg["therapy"].get("function", "auto") == "auto":
         cfg["therapy"]["function"] = job
     cfg["patient"] = {"name": patient.get("name", "patient"), "disorder": disorder,

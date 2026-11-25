@@ -1,0 +1,46 @@
+# MULTIPLE SCLEROSIS: relapses damage the bridge itself (callosal fibres), with partial repair.
+name: ms
+tab: MS
+icon: "⋯"
+order: 6
+ai: false
+default_area: L_4
+severity: 0.7
+seed: {mode: clicked, neighbors: 4, neighbor_share: 0.6}
+engine: {type: stroke}
+config:
+  care: {days: 240}
+  callosal_injury:
+    kind: relapsing
+    relapses_per_year: 1.0      # ASSUMPTION (sweep 0.3-1.5)
+    areas_per_relapse: 60       # ASSUMPTION
+    severity: 0.6               # ASSUMPTION: share of a hit area's callosal input lost in a relapse
+    recover_fraction: 0.5       # ASSUMPTION: remyelination returns half of it
+    recover_days: 45
+    progressive_per_year: 0.1   # ASSUMPTION: slow loss between relapses
+plans:
+  - {key: standard_care, label: "Movement practice", changes: {therapy: {mode: physical}}}
+  - key: mirror_drive
+    label: "Practice + Mirror Drive"
+    changes: {bridge: {mode: mirror_drive, pairs: [{from: "@mirror", to: "@epicentre"}]}}
+  - key: bridge_intact
+    label: "Practice, bridge never damaged (reference)"
+    changes: {callosal_injury: {relapses_per_year: 0.0, progressive_per_year: 0.0}}
+  - key: fewer_relapses
+    label: "Practice, half the relapses (drug)"
+    changes: {callosal_injury: {relapses_per_year: 0.5}}
+plain:
+  what: "Relapses damage the bridge between the two sides."
+  simulate: "The bridge fading and partly repairing over 8 months."
+  shows: "How the help changes as the bridge weakens."
+  use: "See whether the healthy side can still help."
+  limits: "Relapse timing and size are assumptions."
+clinician:
+  scale: "Function score is a model proxy, not EDSS."
+  today: "Callosal atrophy tracks disability in MS (Ozturk 2010)."
+sliders:
+  - {key: callosal_injury.relapses_per_year, label: "Relapses per year", min: 0.0, max: 2.0, step: 0.25}
+assumptions: ["All relapse numbers are assumptions with sweep ranges."]
+sources:
+  - "Evangelou et al. 2000 Brain (callosal axon loss in MS)"
+  - "Ozturk et al. 2010 Mult Scler (callosal atrophy and disability)"

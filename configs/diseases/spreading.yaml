@@ -1,0 +1,11 @@
+# Generic SPREADING disease (prion-like): kept for older patient files (disorder: spreading). Hidden tab.
+name: spreading
+tab: null
+icon: "≈"
+order: 98
+ai: false
+severity: 0.9
+seed: {mode: clicked, neighbors: 0}
+# network Fisher-Kolmogorov; rates set for 4-month care runs: ~12 areas by day 60, ~60 by day 120
+engine: {type: spreading, model: fisher_kpp, transport: 0.001, growth: 0.0016}
+sources: ["Weickenmeier et al. 2019 J Mech Phys Solids; Schafer et al. 2021"]

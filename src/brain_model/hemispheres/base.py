@@ -108,6 +108,10 @@ class Hemisphere:
         self.functions = self._build_functions(hemi_cfg, n_regions)
         self.x = np.zeros(n_regions)
         self.damage = np.zeros(n_regions)
+        # Epilepsy (lesion type "epilepsy"): how excitable each area's own tissue is (1 = normal) and an
+        # extra drive during a seizure. Both act on the tissue, so damage and calming stimulation weaken them.
+        self.excitability = np.ones(n_regions)
+        self.seizure_drive = np.zeros(n_regions)
 
     def _build_functions(self, hemi_cfg: dict, n: int) -> list[Function]:
         spec = hemi_cfg.get("functions")
@@ -166,6 +170,7 @@ class Hemisphere:
         own = self.gain * self.W @ self.x + self.stimulus_strength * task
         if extra is not None:
             own = own + extra
-        drive = self.health * own_scale * own + callosal_input + noise
+        own = own + self.seizure_drive
+        drive = self.health * own_scale * self.excitability * own + callosal_input + noise
         self.x = (1 - self.leak) * self.x + self.leak * np.tanh(drive)
         return self.x

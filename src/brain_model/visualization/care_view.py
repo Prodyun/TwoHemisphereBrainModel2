@@ -10,6 +10,7 @@ function curve and its three measures.
 import numpy as np
 
 from ..brain import steps_per_day
+from ..diseases import extra_measures
 from ..planning import healthy_for, mode_label
 from ..simulation import run_simulation
 from ..simulation.outcome import measures
@@ -36,7 +37,7 @@ def _targets(plan: dict, names: dict) -> list:
 
 
 def care_payload(cfg: dict, plans: list[tuple[str, str, dict]], prediction: dict | None = None,
-                 helpers: list | None = None, patient: dict | None = None) -> dict:
+                 helpers: list | None = None, patient: dict | None = None, profile: dict | None = None) -> dict:
     """plans = [(key, label, plan config), ...]; the first plan is the main one."""
     results, plan_meta = {}, {}
     for key, label, plan in plans:
@@ -69,6 +70,12 @@ def care_payload(cfg: dict, plans: list[tuple[str, str, dict]], prediction: dict
         entry["label"], entry["strength"], entry["mode"] = pm["label"], pm["strength"], pm["mode"]
         entry["measures"] = {k: v for k, v in pm["measures"].items() if k != "weekly_function"}
         entry["targets"] = _targets(plan, names)
+        entry["extra"] = extra_measures(run, plan, profile)    # stages, seizure crossing, bridge health
+        if "bridge_weights" in run:   # Bridge Builder: the chosen fibres thickening, frame by frame
+            bw = np.asarray(run["bridge_weights"], float)
+            entry["bridge_pairs"] = [[p["from"], p["to"]] for p in plan["bridge"]["pairs"]]
+            entry["bridge_weights"] = [[round(float(v), 4) for v in bw[min(len(bw) - 1, (f + 1) * stride - 1)]]
+                                       for f in range(n_frames)]
     healthy_side = "right" if side == "left" else "left"
     help_list = []
     for h in helpers or []:

@@ -1,0 +1,37 @@
+# ALS: TDP-43 pathology starts in the motor cortex of BOTH sides (Brettschneider stages).
+name: als
+tab: ALS
+icon: "⇵"
+order: 5
+ai: false
+severity: 0.6
+seed:
+  mode: areas
+  areas: {"4": 0.6, 6d: 0.4}
+  sides: {left: 1.0, right: 0.9}
+engine: {type: spreading, model: fisher_kpp, transport: 0.001, growth: 0.0016, cross_spread: 0.0}
+job: movement
+config:
+  care: {days: 180}
+stages:
+  - {name: "Stage 1 (motor cortex)", areas: ["4", 6d, 6mp]}
+  - {name: "Stage 2 (prefrontal)", areas: ["46", 9-46d, 8C, p9-46v]}
+  - {name: "Stage 3 (postcentral + prefrontal)", areas: [3b, "1", "2", 9a]}
+  - {name: "Stage 4 (temporal)", areas: [EC, H, PreS]}
+plans:
+  - {key: standard_care, label: "Movement practice", changes: {therapy: {mode: physical}}}
+  - key: helped
+    label: "Practice + excite the other side"
+    changes: {stimulation: {targets: [{area: "@mirror", strength: 0.5}]}}
+plain:
+  what: "Motor cortex fails on BOTH sides at once."
+  simulate: "Damage spreading on both sides together."
+  shows: "With both sides failing, no plan brings movement back."
+  use: "An honest limit: the idea needs one healthy side."
+  limits: "Cortex only; spinal cord and brainstem not modelled."
+clinician:
+  scale: "Movement score is a model proxy, not ALSFRS-R."
+sliders:
+  - {key: severity, label: "Starting level", min: 0.2, max: 0.9, step: 0.05}
+assumptions: ["Time compressed; stages mapped to Glasser areas by this project."]
+sources: ["Brettschneider et al. 2013 Ann Neurol (pTDP-43 stages)"]

@@ -1,0 +1,45 @@
+# TRAUMATIC BRAIN INJURY: a bruise plus diffuse axonal injury, which often hits the corpus callosum.
+name: tbi
+tab: TBI
+icon: "✦"
+order: 7
+ai: false
+default_area: L_6d
+severity: 0.85
+seed:
+  mode: clicked
+  neighbors: 3
+  neighbor_share: 0.6
+  diffuse: {level: 0.15, share: 0.3}    # ASSUMPTION: small damage on 30% of all areas
+engine: {type: stroke, penumbra_days: 3, penumbra_start: 0.5}   # secondary injury over days (assumption)
+config:
+  callosal_injury:
+    kind: hit
+    fraction: 0.6               # ASSUMPTION: share of areas whose callosal input is hit
+    severity: 0.4               # ASSUMPTION
+    recover_fraction: 0.4
+    recover_days: 90
+plans:
+  - {key: standard_care, label: "Movement practice", changes: {therapy: {mode: physical}}}
+  - key: mirror_drive
+    label: "Practice + Mirror Drive"
+    changes: {bridge: {mode: mirror_drive, pairs: [{from: "@mirror", to: "@epicentre"}]}}
+  - key: bridge_intact
+    label: "Practice, bridge not injured (reference)"
+    changes: {callosal_injury: {severity: 0.0}}
+  - key: helped
+    label: "Practice + excite the healthy partner"
+    changes: {stimulation: {targets: [{area: "@mirror", strength: 0.5}]}}
+plain:
+  what: "A blow bruises one area and stretches the bridge's fibres."
+  simulate: "The bruise, scattered damage, and a weakened bridge."
+  shows: "Recovery when the bridge itself is hurt."
+  use: "Pick therapies that still work with a weak bridge."
+  limits: "Where the bridge is hurt is random here, not scanned."
+clinician:
+  scale: "Function score is a model proxy, not GOS-E."
+sliders:
+  - {key: severity, label: "How bad", min: 0.3, max: 0.9, step: 0.05}
+  - {key: callosal_injury.severity, label: "Bridge injury", min: 0.0, max: 0.9, step: 0.1}
+assumptions: ["Diffuse and callosal injury sizes are assumptions."]
+sources: ["Johnson et al. 2013 Brain (axonal pathology after TBI)"]
