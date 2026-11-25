@@ -156,7 +156,9 @@ The plain-language guide is [docs/how_it_works.md](docs/how_it_works.md). What i
 
 ## The Clinic: every disease, your own patient, and the healthy side as a treatment
 
-`python scripts/explore.py` opens the explorer with a tab for each disease:
+`python scripts/explore.py` opens the explorer with a tab for each disease (in the background it pre-runs each tab's
+example patient, kept in memory only, so switching tabs becomes instant; a click on another tab cancels
+one still loading):
 
 - Stroke
 - Tumour

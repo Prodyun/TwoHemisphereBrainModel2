@@ -95,9 +95,13 @@ def patient_args(request: dict) -> dict:
 
 def handle_simulate(service: CareService, request: dict) -> tuple[int, dict]:
     t0 = time.time()
-    with LOCK:
-        payload = service.simulate(**patient_args(request), start_day=request.get("start_day"),
-                                   judge=request.get("judge"), prediction=request.get("prediction"))
+    kw = dict(**patient_args(request), start_day=request.get("start_day"),
+              judge=request.get("judge"), prediction=request.get("prediction"))
+    if service.cached(**kw):   # a tab's default patient, already simulated: answer at once
+        payload = service.simulate(**kw)
+    else:
+        with LOCK:
+            payload = service.simulate(**kw)
     summary = ", ".join(f"{c['label'].split(':')[0]}: week {c['measures']['weeks_to_goal']}"
                         for c in payload["conditions"].values())
     print(f"simulate {payload['meta']['care']['patient'].get('epicentre')}: {summary}  [{time.time() - t0:.1f} s]",
@@ -151,8 +155,11 @@ def make_handler(base: dict, first_page: str, service: CareService | None = None
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.end_headers()
+                self.wfile.write(body)
+            except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError):
+                print(f"(the page stopped waiting for {self.path}: a tab switch or refresh)", flush=True)
 
         def do_GET(self):  # noqa: N802
             if self.path.split("#")[0] in ("/", "/index.html"):
@@ -221,6 +228,17 @@ def main() -> None:
         cfg, _ = service.config_for(preset="left_6d_stroke")
         page = care_page(cfg, payload, interactive=True)
         how = "Click any area: the AI predicts whether the other side can help; then press 'Simulate'."
+    if service is not None:
+        def warm() -> None:   # simulate every tab's default patient in the background, so tabs open fast
+            t0 = time.time()
+            for t in service.diseases():
+                try:
+                    if service.warm_tabs(names=[t["name"]], lock=LOCK):
+                        print(f"warmed: {t['tab']}  [{time.time() - t0:.0f} s]", flush=True)
+                except Exception as exc:   # a tab that fails here still runs normally when clicked
+                    print(f"could not warm {t['tab']}: {exc}", flush=True)
+            print("All disease tabs are ready.", flush=True)
+        threading.Thread(target=warm, daemon=True).start()
     port = free_port(args.port)
     server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(base, page, service))
     url = f"http://127.0.0.1:{port}/" + ("#booth" if args.booth else "")

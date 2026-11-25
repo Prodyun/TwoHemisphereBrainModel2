@@ -163,3 +163,49 @@ def test_spread_risk_grows_over_time():
         a, b = np.array(r["p"][days[0]][side]), np.array(r["p"][days[-1]][side])
         assert (b >= a).all()
     assert r["next"] and r["next"][0]["day"] > 0
+
+
+# ---------- the explorer's tab cache (care_service) ----------
+
+def _bare_service():
+    from brain_model.care_service import CareService
+    svc = object.__new__(CareService)   # no AI model or brain needed for the cache logic
+    svc._tab_cache = {}
+    return svc
+
+
+def test_a_tabs_default_patient_is_served_from_the_cache():
+    svc = _bare_service()
+    key = svc._tab_key("L_6d", 0.9, "stroke", None, 7, None, None, None, None)
+    svc._tab_cache[key] = {"meta": {"care": {"tabs": []}}, "conditions": {"x": 1}}
+    assert svc.cached(area="L_6d", severity=0.9, disorder="stroke", start_day=7)
+    out = svc.simulate(area="L_6d", severity=0.9, disorder="stroke", start_day=7)
+    assert out["conditions"] == {"x": 1}
+    assert [t["name"] for t in out["meta"]["care"]["tabs"]] == [t["name"] for t in D.tabs()]
+
+
+def test_anything_the_user_changed_is_not_cached():
+    svc = _bare_service()
+    for extra in ({"overrides": {"lesion.cross_spread": 0.5}}, {"preset": "left_6d_stroke"},
+                  {"patient": {"damage_map": {"L_4": 0.5}}}, {"judge": {"mode": "bci"}}):
+        kw = dict(area="L_6d", severity=0.9, disorder="stroke", preset=None, start_day=7,
+                  judge=None, prediction=None, overrides=None, patient=None)
+        kw.update(extra)
+        assert svc._tab_key(**kw) is None
+
+
+def test_warm_tabs_simulates_each_tab_once(monkeypatch):
+    svc = _bare_service()
+    calls = []
+
+    def fake_simulate(**kw):
+        calls.append(kw["disorder"])
+        key = svc._tab_key(kw["area"], kw["severity"], kw["disorder"], None, kw["start_day"], None, None, None, None)
+        svc._tab_cache[key] = {"meta": {"care": {}}}
+        return svc._tab_cache[key]
+
+    monkeypatch.setattr(svc, "simulate", fake_simulate)
+    names = [t["name"] for t in D.tabs()]
+    assert svc.warm_tabs() == names
+    assert svc.warm_tabs() == []          # already warm: nothing runs again
+    assert calls == names

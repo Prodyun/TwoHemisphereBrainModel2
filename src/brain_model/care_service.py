@@ -49,6 +49,33 @@ class CareService:
         self.base, self.care = base, care
         self.predictor = HelpPredictor.load(model_file) if Path(model_file).exists() else None
         self.evidence = load_config(EVIDENCE_FILE)["options"] if EVIDENCE_FILE.exists() else {}
+        self._tab_cache: dict = {}   # each tab's default patient, kept in memory only (never written to disk)
+
+    # ---------- the tab cache (makes switching tabs fast) ----------
+    @staticmethod
+    def _tab_key(area, severity, disorder, preset, start_day, judge, prediction, overrides, patient):
+        """A key only for a tab's plain default patient; anything the user changed is simulated fresh."""
+        if preset or judge or prediction or overrides or patient:
+            return None
+        return (disorder, area, round(float(severity), 3), None if start_day is None else int(start_day))
+
+    def warm_tabs(self, start_day: int = 7, names: list[str] | None = None, lock=None) -> list[str]:
+        """Pre-simulate each tab's default patient (the same request the explorer sends on a tab click)."""
+        done = []
+        for t in self.diseases():
+            if names is not None and t["name"] not in names:
+                continue
+            kw = dict(area=t.get("default_area"), severity=t.get("severity") or 0.9, disorder=t["name"],
+                      start_day=start_day)
+            if self._tab_key(**kw, preset=None, judge=None, prediction=None, overrides=None, patient=None) in self._tab_cache:
+                continue
+            if lock is not None:
+                with lock:
+                    self.simulate(**kw)
+            else:
+                self.simulate(**kw)
+            done.append(t["name"])
+        return done
 
     # ---------- the disease tabs ----------
     def diseases(self) -> list[dict]:
@@ -138,6 +165,11 @@ class CareService:
                  preset: str | None = None, start_day: int | None = None, judge: dict | None = None,
                  prediction: dict | None = None, overrides: dict | None = None,
                  patient: dict | None = None) -> dict:
+        key = self._tab_key(area, severity, disorder, preset, start_day, judge, prediction, overrides, patient)
+        if key is not None and key in self._tab_cache:
+            hit = self._tab_cache[key]
+            hit["meta"]["care"]["tabs"] = registry.tabs()   # a newly built disease shows up too
+            return hit
         cfg, patient = self.config_for(area, severity, disorder, preset, overrides, patient)
         if start_day is not None:
             cfg = variant(cfg, therapy={"start_day": int(start_day)}, stimulation={"start_day": int(start_day)})
@@ -162,7 +194,14 @@ class CareService:
         payload["meta"]["care"]["disease"] = next((t for t in tabs if t["name"] == name),
                                                   {"name": name, "tab": name, "ai": bool((profile or {}).get("ai"))})
         payload["meta"]["care"]["tabs"] = tabs
+        if key is not None:
+            self._tab_cache[key] = payload
         return payload
+
+    def cached(self, area=None, severity=0.9, disorder="stroke", preset=None, start_day=None, judge=None,
+               prediction=None, overrides=None, patient=None) -> bool:
+        key = self._tab_key(area, severity, disorder, preset, start_day, judge, prediction, overrides, patient)
+        return key is not None and key in self._tab_cache
 
     # ---------- uploaded patient ----------
     def intake(self, kind: str, data: dict) -> dict:
