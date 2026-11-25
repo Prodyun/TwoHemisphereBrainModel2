@@ -45,6 +45,20 @@ class CorpusCallosum:
         # Multipliers on how much of the OTHER side's task each hemisphere does (1 = normal share).
         self.takeover_by_left = np.ones(n_regions)
         self.takeover_by_right = np.ones(n_regions)
+        # Extra strength on single fibres (receiver x sender), built up by paired stimulation
+        # (Bridge Builder, connectivity/bridge_therapy.py). None = no change to the wiring.
+        self.extra_into_left: np.ndarray | None = None
+        self.extra_into_right: np.ndarray | None = None
+        # Damage to the callosum itself (MS plaques, TBI axonal injury: connectivity/callosal_injury.py):
+        # 1 = intact fibres into that receiver area, 0 = cut. Multiplies the signal arriving there.
+        self.integrity_into_left = np.ones(n_regions)
+        self.integrity_into_right = np.ones(n_regions)
+
+    def base_weights(self, into: str) -> np.ndarray:
+        """The measured wiring as a full matrix (receiver x sender); mirror = identity."""
+        w = self.into_left_wiring if into == "left" else self.into_right_wiring
+        n = len(self.gain_into_left)
+        return np.eye(n) if w is None else w
 
     @staticmethod
     def _route(wiring: np.ndarray | None, values: np.ndarray) -> np.ndarray:
@@ -63,8 +77,16 @@ class CorpusCallosum:
 
         A damaged sender transmits less (its output is scaled by its health). `out_left/right`
         scale what each sender transmits (e.g. brain stimulation of the sending areas)."""
-        into_left = self.gain_into_left * self.route_into_left(out_right * right.health * right.x)
-        into_right = self.gain_into_right * self.route_into_right(out_left * left.health * left.x)
+        sent_right = out_right * right.health * right.x
+        sent_left = out_left * left.health * left.x
+        arriving_left = self.route_into_left(sent_right)
+        arriving_right = self.route_into_right(sent_left)
+        if self.extra_into_left is not None:
+            arriving_left = arriving_left + self.extra_into_left @ sent_right
+        if self.extra_into_right is not None:
+            arriving_right = arriving_right + self.extra_into_right @ sent_left
+        into_left = self.integrity_into_left * self.gain_into_left * arriving_left
+        into_right = self.integrity_into_right * self.gain_into_right * arriving_right
         return into_left, into_right
 
     def brakes(self, left: Hemisphere, right: Hemisphere) -> tuple[np.ndarray | float, np.ndarray | float]:
@@ -74,8 +96,8 @@ class CorpusCallosum:
         wiring and is cut with the callosum (split brain = no brake)."""
         if self.inhibition == 0 or self.strength == 0:
             return 1.0, 1.0
-        from_right = self.route_into_left(right.health * np.abs(right.x))
-        from_left = self.route_into_right(left.health * np.abs(left.x))
+        from_right = self.integrity_into_left * self.route_into_left(right.health * np.abs(right.x))
+        from_left = self.integrity_into_right * self.route_into_right(left.health * np.abs(left.x))
         k = self.inhibition * self.strength
         return 1.0 / (1.0 + k * from_right), 1.0 / (1.0 + k * from_left)
 

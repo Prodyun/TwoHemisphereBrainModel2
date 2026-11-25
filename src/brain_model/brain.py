@@ -4,6 +4,7 @@ import numpy as np
 
 from . import anatomy
 from .connectivity import CorpusCallosum
+from .connectivity.bridge_therapy import BridgeTherapy
 from .hemispheres import LeftHemisphere, RightHemisphere
 from .lesion import Lesion
 from .recovery import Recovery
@@ -28,7 +29,7 @@ class Brain:
                                        cc.get("plasticity_gain", 0.0), cc.get("takeover_gain", 0.0),
                                        into_left, into_right, cc.get("inhibition", 0.0))
         self.lesion = None
-        self.therapy = self.stimulation = self.recovery = None
+        self.therapy = self.stimulation = self.recovery = self.bridge = None
         self.trained = None
         if with_lesion and config.get("lesion"):
             target_name = config["lesion"]["hemisphere"]
@@ -40,10 +41,10 @@ class Brain:
             else:
                 pair, routes = (self.right, self.left), (cc_.route_into_right, cc_.route_into_left)
             self.lesion = Lesion(config["lesion"], *pair, *routes)
-            self._patient_care(config, pair[0])
+            self._patient_care(config, pair[0], pair[1])
         self.reps_physical = self.reps_mental = 0.0
 
-    def _patient_care(self, config: dict, damaged) -> None:
+    def _patient_care(self, config: dict, damaged, healthy) -> None:
         """Therapy, stimulation and healing (all optional; they start counting from the injury)."""
         spd = steps_per_day(config)
         onset = self.lesion.start_step
@@ -58,6 +59,10 @@ class Brain:
         rec = config.get("recovery") or {}
         if rec.get("enabled", False):
             self.recovery = Recovery(rec, len(self.left.x), spd, onset)
+        br = config.get("bridge") or {}
+        if br.get("mode") and br.get("pairs"):
+            self.bridge = BridgeTherapy(br, self.callosum, damaged, healthy, spd, onset,
+                                        np.random.default_rng(config["seed"] + 11))
 
     def step(self, t: int, noise_left: np.ndarray, noise_right: np.ndarray) -> dict:
         """One time step: exchange signals, update both hemispheres, then spread damage, heal and adapt."""
@@ -80,10 +85,14 @@ class Brain:
         into_left, into_right = self.callosum.signals(self.left, self.right, sent["left"], sent["right"])
         brake_left, brake_right = self.callosum.brakes(self.left, self.right)
         cc = self.callosum
+        extra = {"left": None, "right": None}
+        if self.bridge:  # Mirror Drive: the healthy side's activity triggers stimulation of the damaged side
+            extra[self.bridge.damaged.name] = self.bridge.drive(
+                t, practising, practice.pattern if practice is not None else None)
         self.left.step(t, into_left, noise_left, partner_task=cc.takeover_by_left * task_right, task=task_left,
-                       own_scale=brake_left * stim["left"])
+                       own_scale=brake_left * stim["left"], extra=extra["left"])
         self.right.step(t, into_right, noise_right, partner_task=cc.takeover_by_right * task_left, task=task_right,
-                        own_scale=brake_right * stim["right"])
+                        own_scale=brake_right * stim["right"], extra=extra["right"])
         if self.lesion:
             self.lesion.update(t)
         if self.recovery:
@@ -100,6 +109,8 @@ class Brain:
                 self.recovery.update(t, hemi, use, practice.boost if use is not None else 1.0,
                                      practice.session_reps if practice is not None else 0.0)
         self.callosum.adapt(self.left, self.right)
+        if self.bridge:  # Bridge Builder: paired pulses strengthen the chosen fibres
+            self.bridge.update(t, practising)
         if practice is not None:
             self.reps_physical += practice.physical_reps
             self.reps_mental += practice.mental_reps
@@ -118,6 +129,9 @@ class Brain:
             out["bci_fired"] = bool(practice is not None and practice.bci_fired)
             out["reps_physical"] = self.reps_physical
             out["reps_mental"] = self.reps_mental
+        if self.bridge:
+            out["bridge_fired"] = self.bridge.last_fired
+            out["bridge_weights"] = self.bridge.pair_weights()
         for side, parts in (("left", parts_left), ("right", parts_right)):
             for name, value in parts.items():
                 out[f"{side}_task:{name}"] = value

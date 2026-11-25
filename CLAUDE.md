@@ -29,6 +29,21 @@ Two-hemisphere (left/right) brain model, simulated with AI, in Python.
 - Interview the owner with questions before planning bigger work; don't assume.
 - Working style: build the whole agreed chunk, then explain it in plain language at the end.
 
+## Clinic + data rules (decided 2026-11-24)
+- **Don't change any data.** Never edit, delete, retrain or add to anything in `data/` or
+  `results/help_dataset/`, and never overwrite `data/processed/help_model.joblib`. Download no new datasets
+  (ATLAS and ADNI were declined for now). New features only write simulation outputs to `results/`.
+- **UI text is answer-first.** Show big tiles or a traffic light, then one plain sentence (at most ~25 visible
+  words), with everything else behind a collapsed "Details". The owner found the wordy AI panel hard to follow.
+- **The Clinic:**
+  - one explorer tab per disease (stroke, tumour, Alzheimer's, Parkinson's, ALS, MS, TBI, epilepsy);
+  - a simple view plus a "Clinician details" toggle;
+  - new diseases come from `configs/diseases/*.yaml` or the in-app Disease Builder.
+- **The unique part:** the healthy side actively treats the damaged side.
+  - Bridge Builder: personalised paired stimulation that strengthens one callosal fibre.
+  - Mirror Drive: closed loop, where healthy-side activity triggers damaged-side stimulation.
+  - Help-or-Hinder + Hand-off: excite, calm or leave the healthy side, then wean it off.
+
 ## Data files and the chat
 - Never ask the owner to attach data files (CSV, .nii, .zip) to the chat: they cause "prompt is too
   long". Files stay on disk; the owner gives the path or says "downloaded", and Claude moves them with

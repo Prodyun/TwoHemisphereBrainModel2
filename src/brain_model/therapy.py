@@ -41,6 +41,32 @@ import numpy as np
 
 MAIN_MODES = ("physical", "imagery", "action_observation", "bci")
 ADD_ONS = ("sleep_replay", "vns")
+TAPERS = ("none", "step", "linear", "exp")
+
+
+def taper_factor(taper: dict | None, day: float) -> float:
+    """HAND-OFF: how much of the healthy-side help is still given on `day` (1 = full, 0 = stopped).
+
+    taper: {kind: step | linear | exp | none, from_day, to_day}
+      step    full help until to_day, then none
+      linear  full until from_day, then falling in a straight line to 0 at to_day
+      exp     full until from_day, then halving about every (to_day - from_day) / 4.3 days; 0 after to_day
+    The idea: the healthy side helps early, then hands the job back so the damaged side has to do it."""
+    if not taper or taper.get("kind", "none") == "none":
+        return 1.0
+    kind = taper["kind"]
+    if kind not in TAPERS:
+        raise ValueError(f"taper.kind must be one of {TAPERS}")
+    to_day = float(taper["to_day"])
+    from_day = float(taper.get("from_day", to_day))
+    if day >= to_day:
+        return 0.0
+    if kind == "step" or day <= from_day:
+        return 1.0
+    frac = (day - from_day) / max(1e-9, to_day - from_day)
+    if kind == "linear":
+        return 1.0 - frac
+    return float(np.exp(-3.0 * frac))
 
 
 @dataclass
@@ -233,6 +259,7 @@ class Stimulation:
         self.start_day = cfg.get("start_day", 7)
         self.end_day = cfg.get("end_day")
         self.callosal_output = cfg.get("callosal_output", True)
+        self.taper = cfg.get("taper") or {}
         sigma = cfg.get("focality_mm", 12.0) / self.MM_PER_UNIT
         self.spd, self.onset_step = steps_per_day, onset_step
         self.extra = {"left": np.zeros(len(left.x)), "right": np.zeros(len(right.x))}
@@ -265,4 +292,7 @@ class Stimulation:
 
     def gain(self, side: str, t: int, practising: bool) -> np.ndarray | float:
         """Multiplier on each area's own processing right now (1 = unchanged)."""
-        return np.clip(1.0 + self.extra[side], 0.0, None) if self.active(t, practising) else 1.0
+        if not self.active(t, practising):
+            return 1.0
+        f = taper_factor(self.taper, (t - self.onset_step) / self.spd)
+        return np.clip(1.0 + f * self.extra[side], 0.0, None)

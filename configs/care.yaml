@@ -11,6 +11,7 @@ care:
   goal: 0.8               # "recovered" = the trained job back to 80% of its healthy strength
   week_days: 7            # outcomes are scored week by week
   washout_steps: 2        # steps after practice that are not scored (activity still settling)
+  meaningful_change: 0.01 # a plan only 'wins' if it reaches the goal sooner or ends >= 1 point higher (assumption)
 
 recovery:
   enabled: true
@@ -45,6 +46,23 @@ stimulation:
   paired: true              # stimulate only during practice steps
   start_day: 7
   strength: 0.3             # default strength for a target (positive = excite, negative = calm)
+
+# HEALTHY SIDE HELPS (connectivity/bridge_therapy.py, healthy_side.py): the healthy hemisphere actively
+# treats the damaged one. Off unless a plan sets `bridge.mode` and `bridge.pairs`.
+bridge:
+  paired: true              # only during practice steps
+  start_day: 7
+  pair:                     # Bridge Builder (ccPAS: pulse at the healthy area, then at the damaged area)
+    order: forward          # forward = healthy then damaged (strengthens); reverse weakens (the control)
+    rate: 0.05              # ASSUMPTION (sweep 0.01-0.1): share of the remaining gain added per paired session step
+    max_gain: 2.0           # ASSUMPTION (sweep 0.5-3): cap = 2 x the average measured callosal fibre
+    decay_per_day: 0.01     # ASSUMPTION: unrefreshed extra strength fades ~1%/day (ccPAS after-effects are
+                            # short after one session and build with repeated sessions: Falaschi 2025 review)
+  mirror_drive:             # closed loop: healthy-side activity triggers damaged-side stimulation (CCFES-like)
+    timing: closed          # closed | open (fixed times) | random  (open/random get the closed loop's measured share)
+    gain: 2.0               # ASSUMPTION (sweep 0.5-3): stimulation per unit of healthy-side activity
+    threshold: 0.05         # ASSUMPTION: minimum healthy-side activity carrying the movement to trigger
+    duty: 0.5               # share of practice steps stimulated in the open/random controls (set from the closed loop)
 
 # Areas that belong to no configured job get a LOCAL job so their recovery can be scored: the area
 # plus its strongest same-side neighbours (not used by other jobs), driven by a steady rhythm.
