@@ -209,3 +209,28 @@ def test_warm_tabs_simulates_each_tab_once(monkeypatch):
     assert svc.warm_tabs() == names
     assert svc.warm_tabs() == []          # already warm: nothing runs again
     assert calls == names
+
+
+def test_a_prediction_for_another_area_is_ignored(monkeypatch):
+    """The page may send the AI answer for the area clicked before; the server must not plan with it."""
+    from brain_model import care_service as cs
+    svc = _bare_service()
+    svc.base, svc.care = load_config("configs/hcp.yaml"), load_config("configs/care.yaml")
+    seen = {}
+
+    def fake_predict(area, severity=0.9, disorder="stroke"):
+        seen["area"] = area
+        return {"area": area, "best": {"mode": "physical", "chance": 0.5}, "helpers": [], "modes": [], "why": []}
+
+    monkeypatch.setattr(svc, "predict", fake_predict)
+    class Planned(Exception):
+        pass
+
+    def stop(cfg, pred, judge=None):
+        raise Planned(pred)
+
+    monkeypatch.setattr(svc, "plans", stop)   # stop before the slow simulation: we only check the prediction
+    stale = {"area": "R_FFC", "best": {"mode": "bci", "chance": 0.9}, "helpers": [{"area": "L_FFC"}]}
+    with pytest.raises(Planned) as got:
+        svc.simulate(area="L_6d", severity=0.9, disorder="stroke", prediction=stale)
+    assert seen["area"] == "L_6d" and got.value.args[0]["area"] == "L_6d"

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Two-Hemisphere Brain Model</title>
+<title>Brain SWAT</title>
 <style>
   :root {
     --bg: #000;
@@ -60,7 +60,11 @@
   .legend .ramp { width: 64px; height: 10px; border-radius: 2px; display: inline-block; vertical-align: -1px; margin: 0 6px; }
   label.chk { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); cursor: pointer; }
   .chart { position: relative; height: 150px; min-width: 0; }
-  .chart canvas { width: 100%; height: 100%; display: block; }
+  .chart canvas { width: 100%; height: 100%; display: block; cursor: zoom-in; }
+  /* click the chart: it grows over the brains (click again to shrink) */
+  body.chart-big .chart { position: fixed; left: 4vw; top: 9vh; width: 92vw; height: 72vh; z-index: 30;
+    background: var(--bg); border: 1px solid #2a3240; border-radius: 8px; padding: 14px 16px; box-shadow: 0 0 0 100vmax rgba(0,0,0,0.6); }
+  body.chart-big .chart canvas { cursor: zoom-out; }
   .hint { color: var(--muted); font-size: 12px; }
   .pick { min-height: 30px; }
   #pick-text b { color: #fff; }
@@ -70,6 +74,20 @@
     border: 1px solid #2a3240; border-radius: 6px; padding: 6px 9px; font-size: 12px; line-height: 1.45;
     max-width: 260px; }
   #tip b { color: #fff; }
+  /* the area pop-up: opens where you click, fades away when you click the background */
+  #pop-back { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.45); opacity: 0; transition: opacity .2s; }
+  #pop { position: fixed; z-index: 41; width: 300px; background: var(--bg); border: 1px solid #2a3240; border-radius: 8px;
+    padding: 12px 14px; font-size: 12.5px; opacity: 0; transition: opacity .2s; box-shadow: 0 8px 30px rgba(0,0,0,0.6); }
+  #pop-back.show, #pop.show { opacity: 1; }
+  #pop h3 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: #fff; }
+  #pop .m { color: var(--muted); } #pop .chips { margin: 6px 0; }
+  #pop .row2 { display: grid; grid-template-columns: 1fr 1fr; margin: 8px 0; }
+  #pop .row2 > div { padding: 0 8px; border-left: 1px solid var(--line); } #pop .row2 > div:first-child { border-left: 0; padding-left: 0; }
+  #pop .k { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+  #pop .v { font-size: 18px; font-weight: 600; color: #fff; } #pop .v.s { font-size: 12.5px; font-weight: 500; }
+  #pop .go { width: 100%; margin-top: 8px; padding: 8px; border-color: var(--activity); color: #fff; font-size: 13px; }
+  #pop .go:hover { background: #0d2730; }
+  #pop input[type=range] { min-width: 0; }
   #tip .m { color: var(--muted); }
   /* patient care: AI panel, therapy banner, helper legend */
   body.care .layout { right: 340px; transition: opacity .25s; }
@@ -93,9 +111,6 @@
   #ai .sec { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
   #ai .sec.first { border-top: 0; margin-top: 4px; padding-top: 2px; }
   #ai .sec.more details { margin-top: 2px; }
-  #ai .how { margin-top: 8px; color: var(--muted); }
-  #ai .how ol { margin: 4px 0 0; padding-left: 18px; } #ai .how li { margin: 2px 0; }
-  #ai .how b { color: var(--text); }
   #ai h3 { margin: 10px 0 4px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
   #ai .big { font-size: 26px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
   #ai .bar { height: 7px; background: #1c222c; border-radius: 4px; overflow: hidden; margin: 2px 0 5px; }
@@ -165,7 +180,7 @@
 </head>
 <body>
 <header>
-  <h1>Two-Hemisphere Brain Model</h1>
+  <h1>Brain SWAT</h1>
   <div class="seg" role="group" aria-label="View">
     <button data-view="separate" aria-pressed="true">Separate</button>
     <button data-view="together" aria-pressed="false">Together</button>
@@ -221,6 +236,7 @@
           <option value="activity">Activity</option>
           <option value="help">Help arriving (patient care)</option>
           <option value="risk">Spread risk (press “Spread risk”)</option>
+          <option value="diff">Difference vs split brain (damage)</option>
         </select>
       </label>
     </div>
@@ -247,6 +263,8 @@
   <div class="chart"><canvas id="chart" aria-label="Function score chart"></canvas></div>
 </footer>
 <div id="tip" hidden></div>
+<div id="pop-back" hidden></div>
+<div id="pop" hidden role="dialog" aria-label="Brain area"></div>
 
 <script id="brain-data" type="application/json">__BRAIN_DATA__</script>
 <script type="importmap">
@@ -324,8 +342,14 @@ computeArrival();
 const FUNC_COLORS = [[0.95, 0.55, 0.20], [0.55, 0.85, 0.35], [0.75, 0.45, 0.95], [0.35, 0.70, 0.95],
   [0.95, 0.85, 0.35], [0.95, 0.45, 0.65], [0.40, 0.90, 0.80], [0.85, 0.65, 0.45]];
 const FUNC_ORDER = [...new Set([...D.functions.left.names, ...D.functions.right.names])];
-const FUNC_COLOR = Object.fromEntries(SIDES.map(s => [s,
-  D.functions[s].names.map(n => FUNC_COLORS[FUNC_ORDER.indexOf(n) % FUNC_COLORS.length])]));
+// a stable colour per job name; jobs made for a single area ("local 8Ad") share one neutral colour,
+// and a job seen for the first time in a later run simply gets the next colour (never undefined)
+const LOCAL_COLOR = [0.55, 0.58, 0.64];
+function funcColor(name) {
+  if (!name || name.startsWith('local')) return LOCAL_COLOR;
+  if (!FUNC_ORDER.includes(name)) FUNC_ORDER.push(name);
+  return FUNC_COLORS[FUNC_ORDER.indexOf(name) % FUNC_COLORS.length];
+}
 const DAMAGE_STOPS = [[0, [1.0, 0.85, 0.29]], [0.35, [0.93, 0.33, 0.12]], [0.7, [0.80, 0.07, 0.10]], [1, [0.36, 0.02, 0.05]]];
 function damageColor(d) {               // linear: yellow (just reached) -> red -> dark red (destroyed)
   for (let i = 1; i < DAMAGE_STOPS.length; i++) {
@@ -352,6 +376,16 @@ function regionColors(side, f) {
       [R, G, B] = d < 0.02 ? [0.34, 0.36, 0.40] : damageColor(d);
       const since = f - arrival[r];
       if (since >= 0 && since < 8) { const k = 0.75 * (1 - since / 8); R += (1 - R) * k; G += (1 - G) * k; B += (0.9 - B) * k; }
+    } else if ((state.colorBy === 'input' || state.colorBy === 'help') && M.care) {
+      // patient care: only the damaged-side areas RECEIVING help light up (gold); everything else stays grey
+      const g = side === damaged ? clamp01(into[r] / MAX_INTO_DAMAGED) : 0;
+      [R, G, B] = g < 0.04 ? [0.30, 0.32, 0.36] : [0.30 + 0.70 * g, 0.32 + 0.43 * g, 0.36 - 0.24 * g];
+    } else if (state.colorBy === 'diff' && M.care) {
+      // this plan's damage minus the split brain's, same area and time: green = the bridge left LESS damage
+      const sp = D.conditions.split, dd = sp ? (dmg[r] - sp[side + '_damage'][f][r]) / SC : 0;
+      const k = clamp01(Math.abs(dd) / 0.15);
+      [R, G, B] = Math.abs(dd) < 0.01 ? [0.30, 0.32, 0.36]
+        : dd < 0 ? [0.30 - 0.15 * k, 0.32 + 0.55 * k, 0.36 - 0.06 * k] : [0.30 + 0.65 * k, 0.32 - 0.20 * k, 0.36 - 0.24 * k];
     } else if (state.colorBy === 'input' || state.colorBy === 'help') {
       const g = clamp01(into[r] / M.max_into), s = clamp01(out[r] / M.max_out);
       R = 0.10 + 0.95 * g + 0.10 * s; G = 0.11 + 0.70 * g + 0.55 * s; B = 0.14 + 0.10 * g + 0.75 * s;
@@ -359,11 +393,12 @@ function regionColors(side, f) {
       const a = act[r] / SC, pos = Math.max(a, 0), neg = Math.max(-a, 0);
       R = 0.07 + 0.12 * pos + 0.10 * neg; G = 0.09 + 0.80 * pos + 0.03 * neg; B = 0.16 + 0.85 * pos + 0.30 * neg;
     }
-    if (state.colorBy !== 'damage' && d >= 0.02) {     // other modes: damaged areas dim, with a red tint
+    const plain = M.care && ['input', 'help', 'diff'].includes(state.colorBy);   // these colours speak for themselves
+    if (state.colorBy !== 'damage' && !plain && d >= 0.02) {     // other modes: damaged areas dim, with a red tint
       const k = 0.65 * d; R = R * (1 - k) + 0.45 * k; G *= 1 - k; B *= 1 - k;
     }
     if (state.showFunctions && funcOf[r] >= 0) {
-      const fc = FUNC_COLOR[side][funcOf[r]];
+      const fc = funcColor(D.functions[side].names[funcOf[r]]);
       R = 0.45 * R + 0.55 * fc[0]; G = 0.45 * G + 0.55 * fc[1]; B = 0.45 * B + 0.55 * fc[2];
     }
     rgb[3 * r] = R; rgb[3 * r + 1] = G; rgb[3 * r + 2] = B;
@@ -806,7 +841,8 @@ function movePulses(dt) {
     const x = u * CC_SEG, i = Math.min(CC_SEG - 1, Math.floor(x)), fr = x - i;
     const a = pts[i], b = pts[i + 1];
     pulsePos[3 * k] = a.x + (b.x - a.x) * fr; pulsePos[3 * k + 1] = a.y + (b.y - a.y) * fr; pulsePos[3 * k + 2] = a.z + (b.z - a.z) * fr;
-    const col = p.dir === towardDamaged ? GOLD : CYAN, bright = s < 0.04 ? 0 : 0.25 + 0.75 * s;
+    const col = p.dir === towardDamaged ? GOLD : CYAN;
+    const bright = s < 0.04 || (M.care && p.dir !== towardDamaged) ? 0 : 0.25 + 0.75 * s;   // care: only help INTO the damage
     pulseCol[3 * k] = col[0] * bright; pulseCol[3 * k + 1] = col[1] * bright; pulseCol[3 * k + 2] = col[2] * bright;
   });
   pulseGeo.attributes.position.needsUpdate = true; pulseGeo.attributes.color.needsUpdate = true;
@@ -830,7 +866,7 @@ for (const view of Object.values(VIEWS)) {
   const cv = view.renderer.domElement;
   cv.addEventListener('pointermove', e => {
     const hit = areaAt(view, e);
-    if (!hit) { tip.hidden = true; return; }
+    if (!hit || POP.open) { tip.hidden = true; return; }
     const c = D.conditions[state.cond], f = state.frame, { side, region: reg } = hit;
     if (reg < 0) { tip.innerHTML = '<b>Medial wall</b><br><span class="m">where the hemispheres join; no cortical area</span>'; }
     else {
@@ -841,6 +877,8 @@ for (const view of Object.values(VIEWS)) {
         (info ? `<span class="m">${info[1]}</span><br>` : '') +
         `damage ${pct(c[side + '_damage'][f][reg] / SC)} · activity ${(c[side][f][reg] / SC).toFixed(2)}<br>` +
         `input from other side ${(c['into_' + side][f][reg] / SC).toFixed(3)} · sending ${(c['out_' + side][f][reg] / SC).toFixed(3)}` +
+        (M.care && D.conditions.split && state.cond !== 'split'
+          ? `<br>vs split brain: ${(() => { const dd = Math.round(100 * (c[side + '_damage'][f][reg] - D.conditions.split[side + '_damage'][f][reg]) / SC); return dd === 0 ? 'same damage' : (dd < 0 ? dd : '+' + dd) + ' points damage'; })()}` : '') +
         (M.interactive ? '<br><span class="m">click to choose as the start</span>' : '');
     }
     tip.hidden = false;
@@ -859,6 +897,7 @@ for (const view of Object.values(VIEWS)) {
     if (hit.region < 0) { setPickStatus('No brain area there (medial wall). Pick a coloured area.'); return; }
     if (M.care && JUDGE.picking) { toggleJudgeTarget(hit.side, hit.region); return; }
     selectArea(hit.side, hit.region);
+    if (M.care && M.interactive) openPop(hit.side, hit.region, e.clientX, e.clientY);
   });
 }
 
@@ -909,7 +948,7 @@ function applyRun(data) {               // show a new run without reloading the 
   M.care = data.meta.care || null;
   damaged = M.damaged; healthySide = damaged === 'left' ? 'right' : 'left';
   towardDamaged = damaged === 'left' ? 'r2l' : 'l2r';
-  computeArrival(); computeMaxHelp(); setCaptions(); updateLegend(); buildCondButtons();
+  computeArrival(); computeMaxHelp(); setCaptions(); updateLegend(); buildCondButtons(); buildFuncLegend();
   HEMIS.forEach(placeMarker); HEMIS.forEach(placeHelpers); buildPaths(); buildArcs(); renderAI();
   PICK.sel = null; pickControls.hidden = true;
   pickText.textContent = 'Click another area to try a different start.';
@@ -922,34 +961,11 @@ function careTime(f) {
   return day < 0 ? `Before the injury` : `Day ${Math.floor(day) + 1} · week ${Math.floor(day / 7) + 1}`;
 }
 const banner = document.getElementById('banner');
-function updateBanner(f) {
+function updateBanner(f) {   // just the plan and the repetitions: the rest changed too fast to read
   if (!M.care) { banner.hidden = true; return; }
-  const c = D.conditions[state.cond], C = M.care, day = (f * M.stride - C.onset) / C.steps_per_day;
-  const mode = c.mode || '', parts = [];
-  const P = C.patient || {}, where = (P.epicentre || '').replace(/^[LR]_/, '');
-  const reached = c[damaged + '_damage'][f].filter(d => d > 0.1 * SC).length;
-  let phase = '';
-  const kind = ((C.disease || {}).engine || {}).type || P.disorder, tabName = (C.disease || {}).tab || 'Disease';
-  if (day >= 0 && kind === 'stroke' && day < (C.penumbra_days || 0))
-    phase = `<span class="z">Day ${Math.floor(day) + 1}: the at-risk ring around ${esc(where)} is dying off (penumbra)</span>`;
-  else if (day >= 0 && kind === 'tumor') phase = `<span class="z">Tumour at ${esc(where)} growing · ${reached} areas affected</span>`;
-  else if (day >= 0 && kind === 'spreading') phase = `<span class="z">${esc(tabName === 'spreading' ? 'Disease' : tabName)} spreading along the wiring · ${reached} areas reached</span>`;
-  else if (day >= 0 && kind === 'epilepsy') phase = (c.seizure && c.seizure[f]) ? `<span class="z">ϟ Seizure at ${esc(where)}</span>` : '';
-  if (phase) parts.push(phase);
-  if (day < 0) parts.push('<span class="m">Healthy brain · the injury happens on day 1</span>');
-  else if (c.practice[f] === 1) {
-    const how = mode.includes('bci') ? 'BCI: <b>imagining</b> the movement (no physical effort)'
-      : mode.includes('imagery') ? 'Motor imagery: <b>imagining</b> the movement'
-      : mode.includes('action') ? 'Watching the movement' : '<b>Physical</b> practice';
-    parts.push(`<span class="p">● Practice session</span> · ${how}`);
-    if (mode.includes('bci')) parts.push(c.bci_fired[f] > 0 ? '<span class="v">decoder detected “trying” → feedback ✓</span>' : '<span class="m">decoder: waiting for “trying”…</span>');
-    if (mode.includes('vns')) parts.push('<span class="z">VNS pulse paired with each repetition</span>');
-    if (c.stimulating[f] > 0) parts.push(`<span class="z">⚡ stimulating ${(c.targets || []).map(t => t[3]).join(', ')}</span>`);
-  } else if (c.practice[f] === 2) parts.push('<span class="n">☾ Night: sleep replay of today\'s practice</span>');
-  else parts.push('<span class="m">Between sessions · the healthy side keeps sending help</span>');
-  if (!condCut(state.cond) && PATHS.length) parts.push('<span class="m">gold comets = help travelling from the ' + healthySide + ' side into the damage</span>');
+  const c = D.conditions[state.cond];
   const reps = `Repetitions: <b>${Math.round(c.reps_physical[f]).toLocaleString()}</b> physical · <b>${Math.round(c.reps_mental[f]).toLocaleString()}</b> mental`;
-  banner.innerHTML = `<b>${condLabel(state.cond)}</b><br>${parts.join(' · ')}<br>${reps}`;
+  banner.innerHTML = `<b>${condLabel(state.cond)}</b><br>${reps}`;
   banner.hidden = false;
 }
 
@@ -1022,10 +1038,13 @@ function patientBody() {   // what the server needs to rebuild this patient
 async function predictNow() {
   if (!M.interactive || !AI.area) return;
   if (!isAI()) { AI.status = 'Press ③ Simulate to see this patient.'; renderAI(); return; }
-  AI.busy = true; AI.status = 'The AI is thinking…'; renderAI();
-  try { PRED = await api('/api/predict', { area: AI.area, severity: AI.severity, disorder: AI.disorder }); AI.status = ''; }
-  catch (e) { AI.status = 'Could not predict: ' + e.message; }
-  AI.busy = false; renderAI();
+  const area = AI.area, disorder = AI.disorder;   // the answer only counts if the user hasn't moved on
+  try {
+    const out = await api('/api/predict', { area, severity: AI.severity, disorder });
+    if (AI.area !== area || AI.disorder !== disorder) return;
+    PRED = out;
+  } catch (e) { if (AI.area === area && !AI.busy) AI.status = 'Could not predict: ' + e.message; }
+  renderAI(); if (typeof renderPop === 'function') renderPop();
 }
 async function simulateNow(withJudge) {
   if (!M.interactive) return;
@@ -1039,7 +1058,7 @@ async function simulateNow(withJudge) {
   const secs = { alzheimers: 35, ms: 30, epilepsy: 25, tbi: 25 }[AI.disorder] || 15;
   const job = startJob(`Loading ${tabName} · up to ${secs} s (faster once warmed up)`, AI.disorder);
   const body = { ...patientBody(), start_day: AI.startDay };
-  if (!AI.patient && !AI.preset && isAI() && !cacheable) body.prediction = PRED;
+  if (!AI.patient && !AI.preset && isAI() && !cacheable && PRED && PRED.area === AI.area) body.prediction = PRED;
   if (withJudge) body.judge = { mode: JUDGE.mode, targets: JUDGE.targets.map(t => ({ area: t.area, strength: 0.5 })) };
   try {
     const data = await api('/api/simulate', body, job.signal);
@@ -1073,14 +1092,6 @@ async function runAction(kind) {
 }
 
 // ----- pieces of the panel -----
-function howCard() {
-  let seen = false; try { seen = localStorage.getItem('clinic-how-seen') === '1'; } catch (_) {}
-  return `<details id="how" class="how"${seen ? '' : ' open'}><summary>How it works ▸</summary><ol>
-    <li>Pick a disease along the top.</li>
-    <li>The three numbers below are the answer.</li>
-    <li>Press <b>Play</b> to watch months of care. Gold arcs = help crossing the bridge.</li>
-    <li>The three buttons test the spread, every therapy, and the healthy side's own treatments.</li></ol></details>`;
-}
 function diseaseCard() {
   const d = disease(), P = d.plain || {}, C = d.clinician || {};
   const pat = (M.care && M.care.patient) || {};
@@ -1282,6 +1293,54 @@ function controls(area) {
       ${isAI() ? `<span>Preset</span><select id="ai-preset"><option value="">(the clicked area)</option><option value="left_6d_stroke">Motor stroke (left 6d)</option>
       <option value="left_broca_stroke">Language stroke (left Broca)</option><option value="right_ffc_tumor">Tumour (right face area)</option></select>` : ''}</div></details></div>`;
 }
+// ----- the area pop-up -----
+const POP = { open: false, side: null, region: null, x: 0, y: 0 };
+const popEl = document.getElementById('pop'), popBack = document.getElementById('pop-back');
+function openPop(side, region, x, y) {
+  Object.assign(POP, { open: true, side, region, x, y });
+  popEl.hidden = popBack.hidden = false; renderPop();
+  requestAnimationFrame(() => { popEl.classList.add('show'); popBack.classList.add('show'); });
+}
+function closePop() {
+  if (!POP.open) return;
+  POP.open = false; popEl.classList.remove('show'); popBack.classList.remove('show');
+  setTimeout(() => { if (!POP.open) popEl.hidden = popBack.hidden = true; }, 220);
+}
+popBack.onclick = closePop;
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePop(); });
+function renderPop() {
+  if (!POP.open) return;
+  const { side, region } = POP, name = D.mesh[side].names[region], inf = INFO(side, region);
+  const fi = D.functions[side].region[region], job = fi >= 0 ? D.functions[side].names[fi].replace(/_/g, ' ') : 'no assigned job';
+  const c = D.conditions[state.cond], f = state.frame;
+  const dmg = c[side + '_damage'][f][region] / SC, into = c['into_' + side][f][region] / SC;
+  let h = `<h3>${side[0].toUpperCase()} ${esc(areaName(side, region))}${inf ? ` <span class="m" style="text-transform:none;letter-spacing:0;font-weight:400">· ${esc(String(inf[0]))}</span>` : ''}</h3>` +
+    `<div class="m">${side} hemisphere</div>` +
+    `<div class="chips"><span class="chip">${esc(job)}</span>${inf ? `<span class="chip" title="${esc(inf[1])}">${esc(String(inf[1]).split(' · ').pop())}</span>` : ''}</div>` +
+    `<div class="row2"><div><div class="k">Damage now</div><div class="v">${P100(dmg)}</div></div>` +
+    `<div><div class="k">Help arriving now</div><div class="v">${into > 0.005 ? into.toFixed(2) : 'none'}</div></div></div>`;
+  if (isAI()) {
+    if (PRED && PRED.area === name && PRED.best) {
+      const ch = PRED.best.chance, senders = (PRED.helpers || []).slice(0, 2).map(x => esc(shortArea(x.area))).join('<br>') || '–';
+      h += `<div class="row2"><div><div class="k">Other side can help</div><div class="v">${light(ch, 0.7, 0.4)}${Math.round(ch * 100)}%</div><div class="m">${esc(modeName(PRED.best.mode))}</div></div>` +
+        `<div><div class="k">Help would come from</div><div class="v s">${senders}</div></div></div>`;
+    } else h += `<div class="m"><span class="spin"></span>The AI is looking at this area…</div>`;
+  } else h += `<div class="m">${esc(disease().tab || '')}: simulation only (the AI is trained on stroke and tumour).</div>`;
+  h += `<div class="m" style="margin-top:6px">How bad <input type="range" id="pop-sev" min="0.3" max="0.95" step="0.05" value="${AI.severity}"> <span id="pop-sev-v">${Math.round(AI.severity * 100)}%</span></div>` +
+    `<button class="go" id="pop-go">▶ Simulate damage here</button>`;
+  popEl.innerHTML = h;
+  // place it next to the click, inside the window
+  const w = popEl.offsetWidth, hh = popEl.offsetHeight;
+  popEl.style.left = Math.max(8, Math.min(innerWidth - w - 8, POP.x + 14)) + 'px';
+  popEl.style.top = Math.max(8, Math.min(innerHeight - hh - 8, POP.y - 20)) + 'px';
+  document.getElementById('pop-sev').oninput = e => { AI.severity = +e.target.value; document.getElementById('pop-sev-v').textContent = Math.round(AI.severity * 100) + '%'; };
+  document.getElementById('pop-sev').onchange = () => { if (isAI()) predictNow(); };
+  document.getElementById('pop-go').onclick = () => {
+    closePop();
+    const sel = document.getElementById('color-by'); sel.value = 'input'; state.colorBy = 'input'; updateLegend();
+    simulateNow(false);
+  };
+}
 function renderTabs() {
   const nav = document.getElementById('tabs'); nav.innerHTML = '';
   document.getElementById('clin-wrap').hidden = !M.care;
@@ -1317,15 +1376,13 @@ function renderAI() {
   let h = `<div class="ai-head"><h2>Clinic${isAI() ? '<span> · AI Help Predictor</span>' : ''}</h2>` +
     `<button class="hide" title="Hide the panel" onclick="document.getElementById('ai-toggle').click()">›</button></div>`;
   if (AI.status) h += `<div class="status${AI.busy ? ' busy' : ''}">${AI.busy ? '<span class="spin"></span>' : ''}${esc(AI.status)}</div>`;
-  h += howCard() + diseaseCard();
+  h += diseaseCard();
   if (AI.loadingTab) h += `<div class="sec"><div class="m">The brains will update when it is ready. You can pick another tab at any time.</div></div>`;
   else h += `<div class="sec">${answerCard(pred, area)}${aiDetails(pred)}</div>` + raceCard() + riskCard() + optionsCard() + healthyCard();
   if (M.interactive) h += controls(area) + `<div class="sec more">` + uploadCard() + builderCard() + judgeCard() + `</div>`;
-  const openUp = document.getElementById('up-det')?.open, openHow = document.getElementById('how')?.open;
+  const openUp = document.getElementById('up-det')?.open;
   aiEl.innerHTML = h;
   if (openUp) document.getElementById('up-det').open = true;
-  if (openHow !== undefined) document.getElementById('how').open = openHow;
-  document.getElementById('how').ontoggle = e => { try { localStorage.setItem('clinic-how-seen', '1'); } catch (_) {} };
   aiEl.querySelectorAll('[data-rday]').forEach(b => b.onclick = () => { state.riskDay = +b.dataset.rday; renderAI(); updateLegend(); redraw(); });
   if (!M.interactive) return;
   const $ = id => document.getElementById(id);
@@ -1442,9 +1499,16 @@ function updateLegend() {
     risk: RISK ? `<span><i style="background:#4d5159"></i>Not reached</span><span>Chance of being reached by day ${state.riskDay}<span class="ramp" style="background:linear-gradient(90deg,#ffd94d,#ff3a2b)"></span>(low → certain)</span>`
       : `<span>Press “Spread risk” in the panel first</span>`,
   };
+  if (M.care) {
+    parts.input = `<span><i style="background:#4d5159"></i>No help arriving</span><span>Help arriving from the ${healthySide} side<span class="ramp" style="background:linear-gradient(90deg,#6e6650,#ffc03a)"></span>(little → most)</span>`;
+    parts.diff = D.conditions.split ? `<span>vs split brain:</span><span><i style="background:#1fd370"></i>less damage</span><span><i style="background:#4d5159"></i>same</span><span><i style="background:#f05a2c"></i>more damage</span>`
+      : `<span>This patient has no split-brain plan to compare with.</span>`;
+  }
+  if (M.care) parts.damage += `<span>Tip: colour by “Difference vs split brain” to see where the bridge changed the damage</span>`;
   parts.help = parts.input;
   L.innerHTML = parts[state.colorBy] + (state.view === 'together'
-    ? `<span><i style="background:var(--help)"></i>Pulse into the ${damaged} side</span><span><i style="background:var(--activity)"></i>Pulse into the ${healthySide} side</span>` : '');
+    ? (M.care ? `<span><i style="background:var(--help)"></i>Pulse into the ${damaged} (damaged) side</span>`
+      : `<span><i style="background:var(--help)"></i>Pulse into the ${damaged} side</span><span><i style="background:var(--activity)"></i>Pulse into the ${healthySide} side</span>`) : '');
 }
 
 // ---------- corpus callosum strip (Separate view) ----------
@@ -1452,7 +1516,16 @@ const bridge = document.getElementById('bridge'), bctx = bridge.getContext('2d')
 const particles = Array.from({ length: 70 }, () => ({ t: Math.random(), y: Math.random(), dir: Math.random() < 0.5 ? 1 : -1 }));
 function helpAmount(c, f) { return mean(c['into_' + damaged][f]) / SC; }
 let maxHelp = 1;
-function computeMaxHelp() { let mx = 1e-6; const c = D.conditions[condKeys()[0]]; for (let f = 0; f < N; f++) mx = Math.max(mx, helpAmount(c, f)); maxHelp = mx; }
+let MAX_INTO_DAMAGED = 1;   // the strongest help any damaged-side area receives in this run (for the gold scale)
+function computeMaxHelp() {
+  let mx = 1e-6, mi = 1e-6;
+  for (const k of condKeys()) {
+    const c = D.conditions[k];
+    if (k === condKeys()[0]) for (let f = 0; f < N; f++) mx = Math.max(mx, helpAmount(c, f));
+    for (const row of c['into_' + damaged]) for (const v of row) if (v > mi) mi = v;
+  }
+  maxHelp = mx; MAX_INTO_DAMAGED = mi;
+}
 computeMaxHelp();
 function drawBridge(f, dt) {
   const w = bridge.clientWidth, h = bridge.clientHeight, dpr = Math.min(devicePixelRatio, 2);
@@ -1492,18 +1565,28 @@ function drawChart(f) {
   if (!w || !h) return;
   if (chart.width !== Math.round(w * dpr) || chart.height !== Math.round(h * dpr)) { chart.width = Math.round(w * dpr); chart.height = Math.round(h * dpr); }
   const ctx = cctx; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
-  const L = 40, R = 12, T = 22, B = 20, pw = w - L - R, ph = h - T - B, ymax = 1.2;
-  const X = i => L + (i / (N - 1)) * pw, Y = v => T + ph - (Math.min(v, ymax) / ymax) * ph;
-  ctx.font = '11px system-ui, sans-serif'; ctx.textBaseline = 'middle';
-  for (const v of [0, 0.5, 1]) {
+  const big = document.body.classList.contains('chart-big') && !!M.care;
+  const L = big ? 48 : 40, R = 12, T = big ? 46 : 22, B = big ? 26 : 20, pw = w - L - R, ph = h - T - B;
+  // enlarged: zoom the y-axis to where the lines are, so plans that are close can be told apart
+  let ylo = 0, yhi = 1.2;
+  if (big) {
+    const vals = condKeys().flatMap(k => D.conditions[k].weekly || []).filter(v => v != null).concat([M.care.goal]);
+    ylo = Math.max(0, Math.floor(Math.min(...vals) * 10) / 10 - 0.05); yhi = Math.ceil(Math.max(...vals) * 10) / 10 + 0.02;
+  }
+  const X = i => L + (i / (N - 1)) * pw, Y = v => T + ph - ((Math.max(ylo, Math.min(v, yhi)) - ylo) / (yhi - ylo)) * ph;
+  ctx.font = (big ? '13px' : '11px') + ' system-ui, sans-serif'; ctx.textBaseline = 'middle';
+  const grid = big ? Array.from({ length: 13 }, (_, i) => i / 10).filter(v => v >= ylo && v <= yhi) : [0, 0.5, 1];
+  for (const v of grid) {
     ctx.strokeStyle = '#1c222c'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(L, Y(v)); ctx.lineTo(L + pw, Y(v)); ctx.stroke();
     ctx.fillStyle = '#7d8899'; ctx.textAlign = 'right'; ctx.fillText(Math.round(v * 100) + '%', L - 6, Y(v));
   }
   const c = D.conditions[state.cond];
-  ctx.fillStyle = 'rgba(224,48,63,0.18)'; ctx.beginPath(); ctx.moveTo(X(0), Y(0));
-  for (let i = 0; i < N; i++) ctx.lineTo(X(i), Y(mean(c[damaged + '_damage'][i]) / SC));
-  ctx.lineTo(X(N - 1), Y(0)); ctx.closePath(); ctx.fill();
-  if (M.care) { drawCareChart(ctx, w, h, L, R, T, B, pw, ph, X, Y, f); return; }
+  if (!big) {
+    ctx.fillStyle = 'rgba(224,48,63,0.18)'; ctx.beginPath(); ctx.moveTo(X(0), Y(0));
+    for (let i = 0; i < N; i++) ctx.lineTo(X(i), Y(mean(c[damaged + '_damage'][i]) / SC));
+    ctx.lineTo(X(N - 1), Y(0)); ctx.closePath(); ctx.fill();
+  }
+  if (M.care) { drawCareChart(ctx, w, h, L, R, T, B, pw, ph, X, Y, f, big); return; }
   for (const [name, color] of [['split', '#8a93a3'], ['connected', '#38e1ff']]) {
     if (!D.conditions[name]) continue;
     const s = D.conditions[name]['score_' + damaged];
@@ -1525,37 +1608,56 @@ function drawChart(f) {
 const CARE_COLORS = { recommended: '#38e1ff', judge: '#ffffff', standard_care: '#ffc03a', split: '#8a93a3' };
 const EXTRA_COLORS = ['#5fe08a', '#c9a4ff', '#ff7a7a', '#38e1ff', '#ffd84a'];
 const careColor = k => CARE_COLORS[k] || EXTRA_COLORS[Math.max(0, condKeys().indexOf(k)) % EXTRA_COLORS.length];
-function drawCareChart(ctx, w, h, L, R, T, B, pw, ph, X, Y, f) {
+function drawCareChart(ctx, w, h, L, R, T, B, pw, ph, X, Y, f, big) {
   const C = M.care, wk = C.week_steps / M.stride, on = C.onset / M.stride;
   ctx.setLineDash([4, 4]); ctx.strokeStyle = '#5fe08a'; ctx.beginPath(); ctx.moveTo(L, Y(C.goal)); ctx.lineTo(L + pw, Y(C.goal)); ctx.stroke(); ctx.setLineDash([]);
   ctx.fillStyle = '#5fe08a'; ctx.textAlign = 'left'; ctx.fillText(`goal ${Math.round(C.goal * 100)}%`, L + 4, Y(C.goal) - 7);
   for (const k of condKeys()) {
     const ys = D.conditions[k].weekly || [];
-    ctx.strokeStyle = careColor(k); ctx.lineWidth = k === state.cond ? 2.4 : 1.3; ctx.globalAlpha = k === state.cond ? 1 : 0.6;
+    ctx.strokeStyle = careColor(k); ctx.lineWidth = (k === state.cond ? 2.4 : 1.3) * (big ? 1.5 : 1);
+    ctx.globalAlpha = k === state.cond || big ? 1 : 0.6;
     ctx.beginPath();
     ys.forEach((v, i) => { const x = X(Math.min(N - 1, on + (i + 1) * wk)); i ? ctx.lineTo(x, Y(v)) : ctx.moveTo(x, Y(v)); });
-    ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.stroke();
+    if (big) { ctx.fillStyle = careColor(k); ys.forEach((v, i) => { ctx.beginPath(); ctx.arc(X(Math.min(N - 1, on + (i + 1) * wk)), Y(v), 3, 0, 6.283); ctx.fill(); }); }
+    ctx.globalAlpha = 1;
   }
   ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(X(f), T); ctx.lineTo(X(f), T + ph); ctx.stroke();
   ctx.textAlign = 'left'; ctx.fillStyle = '#d6deea';
   const title = `${C.job.replace(/_/g, ' ')}, % of healthy, by week`;
   ctx.fillText(title, L, 9);
-  const titleEnd = L + ctx.measureText(title).width + 16;
-  let kx = L + pw; ctx.textAlign = 'right';
-  for (const k of [...condKeys()].reverse()) {
-    let label = condLabel(k).split(':')[0].replace(/ \(control\)/, '');
-    if (label.length > 24) label = label.slice(0, 23) + '…';
-    const tw = ctx.measureText(label).width;
-    if (kx - tw - 14 < titleEnd) break;              // no room left: the panel lists every plan
-    ctx.fillStyle = '#7d8899'; ctx.fillText(label, kx, 9);
-    ctx.fillStyle = careColor(k); ctx.fillRect(kx - tw - 14, 5, 9, 9); kx -= tw + 28;
+  ctx.fillStyle = '#7d8899'; ctx.textAlign = 'right'; ctx.fillText(big ? 'click to shrink' : 'click to enlarge', L + pw, h - 8);
+  if (big) {   // every plan, full names, on their own row
+    let kx = L; ctx.textAlign = 'left';
+    for (const k of condKeys()) {
+      const label = condLabel(k).replace(/ \(control\)/, ' (control)'), tw = ctx.measureText(label).width;
+      if (kx + tw + 30 > L + pw) break;
+      ctx.fillStyle = careColor(k); ctx.fillRect(kx, 27, 10, 10); ctx.fillStyle = '#d6deea'; ctx.fillText(label, kx + 15, 32); kx += tw + 34;
+    }
+  } else {
+    const titleEnd = L + ctx.measureText(title).width + 16;
+    let kx = L + pw; ctx.textAlign = 'right';
+    for (const k of [...condKeys()].reverse()) {
+      let label = condLabel(k).split(':')[0].replace(/ \(control\)/, '');
+      if (label.length > 24) label = label.slice(0, 23) + '…';
+      const tw = ctx.measureText(label).width;
+      if (kx - tw - 14 < titleEnd) break;              // no room left: the panel lists every plan
+      ctx.fillStyle = '#7d8899'; ctx.fillText(label, kx, 9);
+      ctx.fillStyle = careColor(k); ctx.fillRect(kx - tw - 14, 5, 9, 9); kx -= tw + 28;
+    }
   }
   ctx.fillStyle = '#7d8899'; ctx.textAlign = 'left'; ctx.fillText('weeks after the injury →', L, h - 8);
 }
+chart.addEventListener('click', () => {   // patient care: click = enlarge / shrink. Otherwise: jump in time.
+  if (!M.care) return;
+  document.body.classList.toggle('chart-big'); requestAnimationFrame(() => drawChart(state.frame));
+});
 chart.addEventListener('pointerdown', e => {
+  if (M.care) return;
   const r = chart.getBoundingClientRect(), pw = r.width - 52;
   setFrame(Math.round(clamp01((e.clientX - r.left - 40) / pw) * (N - 1)));
 });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') document.body.classList.remove('chart-big'); });
 
 // ---------- controls ----------
 const slider = document.getElementById('slider'); slider.max = N - 1;
@@ -1578,18 +1680,20 @@ document.getElementById('color-by').onchange = e => { state.colorBy = e.target.v
 document.getElementById('show-outlines').onchange = e => { state.outlines = e.target.checked; redraw(); };
 document.getElementById('show-names').onchange = e => { state.names = e.target.checked; redraw(); };
 document.getElementById('show-network').onchange = e => { state.network = e.target.checked; redraw(); };
-(() => {
-  const legend = document.getElementById('func-legend');
-  for (const [i, name] of FUNC_ORDER.entries()) {
+function buildFuncLegend() {   // rebuilt after every run: a new patient can bring a new job
+  const legend = document.getElementById('func-legend'); legend.innerHTML = '';
+  const all = [...new Set([...D.functions.left.names, ...D.functions.right.names])];
+  for (const name of all) {
     const sides = SIDES.filter(s => D.functions[s].names.includes(name)).map(s => s[0].toUpperCase());
-    const [r, g, b] = FUNC_COLORS[i % FUNC_COLORS.length].map(x => Math.round(x * 255));
+    const [r, g, b] = funcColor(name).map(x => Math.round(x * 255));
     const s = document.createElement('span');
     s.innerHTML = `<i style="background:rgb(${r},${g},${b})"></i>`;
     s.append(`${name.replace(/_/g, ' ')} (${sides.join('+')})`);
     legend.append(s);
   }
-  document.getElementById('show-functions').onchange = e => { state.showFunctions = e.target.checked; legend.hidden = !e.target.checked; redraw(); };
-})();
+}
+buildFuncLegend();
+document.getElementById('show-functions').onchange = e => { state.showFunctions = e.target.checked; document.getElementById('func-legend').hidden = !e.target.checked; redraw(); };
 function buildCondButtons() {
   const seg = document.getElementById('cond-seg'); seg.innerHTML = '';
   if (!condKeys().includes(state.cond)) state.cond = condKeys()[0];

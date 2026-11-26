@@ -178,6 +178,8 @@ class CareService:
         epicentre = max(on_side, key=on_side.get)
         name = patient.get("disorder", disorder)
         profile = registry.get(name)
+        if prediction is not None and prediction.get("area") != epicentre:
+            prediction = None   # an answer for another area (e.g. the user clicked on): predict afresh
         if prediction is None:
             prediction = self.predict(epicentre, max(on_side.values()), name) if (profile or {}).get("ai") \
                 else {"area": epicentre, "disorder": name, "best": None, "modes": [], "why": [],
