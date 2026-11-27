@@ -53,6 +53,11 @@ class CorpusCallosum:
         # 1 = intact fibres into that receiver area, 0 = cut. Multiplies the signal arriving there.
         self.integrity_into_left = np.ones(n_regions)
         self.integrity_into_right = np.ones(n_regions)
+        # Which RECEIVING areas feel the brake (1 = yes). All by default; `inhibition_jobs` limits it to
+        # some jobs' areas (after a motor stroke the brake is strong onto movement areas: Murase 2004,
+        # Spalletti 2017; in touch/visual cortex the callosum instead helps: Kokinovic & Medini 2018).
+        self.brake_mask_left = np.ones(n_regions)
+        self.brake_mask_right = np.ones(n_regions)
 
     def base_weights(self, into: str) -> np.ndarray:
         """The measured wiring as a full matrix (receiver x sender); mirror = identity."""
@@ -99,7 +104,8 @@ class CorpusCallosum:
         from_right = self.integrity_into_left * self.route_into_left(right.health * np.abs(right.x))
         from_left = self.integrity_into_right * self.route_into_right(left.health * np.abs(left.x))
         k = self.inhibition * self.strength
-        return 1.0 / (1.0 + k * from_right), 1.0 / (1.0 + k * from_left)
+        return (1.0 / (1.0 + k * self.brake_mask_left * from_right),
+                1.0 / (1.0 + k * self.brake_mask_right * from_left))
 
     def adapt(self, left: Hemisphere, right: Hemisphere) -> None:
         """Move each link and takeover multiplier a little toward its target for the current damage."""

@@ -105,23 +105,41 @@ class Schedule:
         self.days_per_week = cfg.get("days_per_week", 5)
         self.session_steps = cfg.get("session_steps", 3)
         self.sleep_steps = cfg.get("sleep_replay", {}).get("steps", 2)
-        if not 0 < self.session_steps < steps_per_day - self.sleep_steps:
+        # Optional EXTRA practice on top of the usual sessions (e.g. CPASS: 20 extra hours at 2-3 months):
+        # {start_day, end_day, session_steps} adds that many practice hours on each practice day in the window.
+        extra = cfg.get("extra") or {}
+        self.extra_start, self.extra_end = extra.get("start_day"), extra.get("end_day")
+        self.extra_steps = int(extra.get("session_steps", 0)) if extra else 0
+        if not 0 < self.session_steps + self.extra_steps < steps_per_day - self.sleep_steps:
             raise ValueError("therapy.session_steps must leave room in the day for the sleep steps")
         # Each day's session starts at a different hour (as in real life). The hours come from a fixed
         # seed, so every plan for a patient uses the same hours (a fair comparison). A fixed hour would
         # always skip the same phases of the job's rhythm when scoring, which biases the weekly score.
         self._starts: dict[int, int] = {}
         self._rng = np.random.default_rng(cfg.get("schedule_seed", 0))
-        self._latest_start = max(0, steps_per_day - self.sleep_steps - self.session_steps - 2)
+        self._latest_start = max(0, steps_per_day - self.sleep_steps - self.session_steps - self.extra_steps - 2)
 
     def day(self, t: int) -> float:
         return (t - self.onset_step) / self.spd
 
+    def _weekday_ok(self, day: int) -> bool:
+        return (day - self.start_day) % 7 < self.days_per_week
+
+    def in_extra(self, day: int) -> bool:
+        return (self.extra_steps > 0 and self.extra_start is not None and self.extra_start <= day
+                and (self.extra_end is None or day < self.extra_end) and self._weekday_ok(day))
+
     def is_practice_day(self, t: int) -> bool:
         day = int(np.floor(self.day(t)))
+        if self.in_extra(day):
+            return True
         if day < self.start_day or (self.end_day is not None and day >= self.end_day):
             return False
-        return (day - self.start_day) % 7 < self.days_per_week
+        return self._weekday_ok(day)
+
+    def steps_today(self, day: int) -> int:
+        usual = self.start_day <= day and (self.end_day is None or day < self.end_day)
+        return (self.session_steps if usual else 0) + (self.extra_steps if self.in_extra(day) else 0)
 
     def session_start(self, day: int) -> int:
         while len(self._starts) <= day:  # drawn in day order, so the hours never depend on the query order
@@ -132,8 +150,9 @@ class Schedule:
         if t < self.onset_step or not self.is_practice_day(t):
             return 0
         step_in_day = (t - self.onset_step) % self.spd
-        start = self.session_start(int(np.floor(self.day(t))))
-        if start <= step_in_day < start + self.session_steps:
+        day = int(np.floor(self.day(t)))
+        start = self.session_start(day)
+        if start <= step_in_day < start + self.steps_today(day):
             return 1
         if step_in_day >= self.spd - self.sleep_steps:
             return 2

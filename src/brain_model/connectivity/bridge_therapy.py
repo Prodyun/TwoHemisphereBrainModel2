@@ -62,6 +62,19 @@ class BridgeTherapy:
         if self.order not in ("forward", "reverse"):
             raise ValueError("bridge.pair.order must be 'forward' or 'reverse'")
         self.rate = float(pc.get("rate", 0.02))
+        # Optional STDP timing (Bi & Poo 1998): `isi_ms` = time from the healthy-side pulse to the
+        # damaged-side pulse. Positive (healthy first) strengthens, negative weakens, and the size of the
+        # change follows the STDP window relative to the 8 ms gap used in ccPAS (Buch 2011), where `rate`
+        # was set. Without isi_ms the plain forward/reverse rule above is used.
+        self.isi_ms = pc.get("isi_ms")
+        if self.isi_ms is not None:
+            from ..calibration import stdp_kernel
+            sp = {"a_plus": 1.0, "a_minus": float(pc.get("a_minus_over_a_plus", 0.35)),
+                  "tau_plus": float(pc.get("tau_plus_ms", 16.8)), "tau_minus": float(pc.get("tau_minus_ms", 33.7))}
+            k = stdp_kernel(float(self.isi_ms), **sp)
+            ref = stdp_kernel(float(pc.get("reference_isi_ms", 8.0)), **sp)
+            self.order = "forward" if k >= 0 else "reverse"
+            self.rate *= abs(k) / ref
         self.decay = float(pc.get("decay_per_day", 0.01)) / steps_per_day
         into = damaged.name
         self.base = callosum.base_weights(into)

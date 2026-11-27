@@ -29,6 +29,13 @@ class Brain:
         self.callosum = CorpusCallosum(cc["strength"], n, cc.get("plasticity_rate", 0.0),
                                        cc.get("plasticity_gain", 0.0), cc.get("takeover_gain", 0.0),
                                        into_left, into_right, cc.get("inhibition", 0.0))
+        jobs = cc.get("inhibition_jobs")
+        if jobs:   # the brake reaches only these jobs' areas (e.g. [movement])
+            for hemi, mask in ((self.left, self.callosum.brake_mask_left), (self.right, self.callosum.brake_mask_right)):
+                mask[:] = 0.0
+                for f in hemi.functions:
+                    if f.name in jobs:
+                        mask[f.regions] = 1.0
         self.lesion = None
         self.therapy = self.stimulation = self.recovery = self.bridge = self.callosal_injury = None
         self.trained = None

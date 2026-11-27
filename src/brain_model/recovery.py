@@ -30,6 +30,11 @@ Each step, for every area of both hemispheres:
                  people, so the points are adjustable.
   * floor        permanent damage: floor_fraction x the worst damage the area ever had. Dead tissue
                  does not grow back; only the injured-but-alive part can recover.
+  * floor_use_rate  practice can also LOWER the floor (raise the final level), not only speed healing:
+                 relief += window * floor_use_rate * boost * saturation * use * (1 - relief), and the
+                 floor becomes floor_fraction x worst damage x (1 - relief). Without it, extra practice only
+                 makes patients reach the same plateau sooner; in CPASS (Dromerick 2021) extra practice at
+                 2-3 months raised the final score after usual care had levelled off. 0 = old behaviour.
 
 Off unless `recovery.enabled: true`, so earlier results are unchanged.
 """
@@ -43,6 +48,9 @@ class Recovery:
         self.floor_fraction = cfg.get("floor_fraction", 0.3)
         self.saturation_reps = cfg.get("saturation_reps", 300.0)
         self.callosal_use_weight = cfg.get("callosal_use_weight", 0.0)
+        self.floor_use_rate = cfg.get("floor_use_rate", 0.0)
+        if self.floor_use_rate < 0:
+            raise ValueError("recovery.floor_use_rate must be >= 0")
         if not 0.0 <= self.floor_fraction <= 1.0:
             raise ValueError("recovery.floor_fraction must be between 0 and 1")
         points = np.array(cfg.get("window_points", [[0, 1.0]]), dtype=float)
@@ -52,6 +60,7 @@ class Recovery:
         self.steps_per_day = steps_per_day
         self.onset_step = onset_step
         self.peak = {"left": np.zeros(n_regions), "right": np.zeros(n_regions)}
+        self.relief = {"left": np.zeros(n_regions), "right": np.zeros(n_regions)}
 
     def window(self, t: int) -> float:
         """Plasticity gain at step t (0 before the injury)."""
@@ -62,7 +71,7 @@ class Recovery:
         return float(np.interp(np.log1p(days), np.log1p(self.window_days), self.window_gain))
 
     def floor(self, side: str) -> np.ndarray:
-        return self.floor_fraction * self.peak[side]
+        return self.floor_fraction * self.peak[side] * (1.0 - self.relief[side])
 
     def update(self, t: int, hemi, use: np.ndarray | None, boost: float = 1.0,
                session_reps: float = 0.0) -> None:
@@ -74,5 +83,8 @@ class Recovery:
         if use is not None:
             saturation = 1.0 / (1.0 + session_reps / self.saturation_reps)
             rate = rate + self.use_rate * boost * saturation * use
+            if self.floor_use_rate > 0:
+                r = self.relief[hemi.name]
+                self.relief[hemi.name] = r + np.clip(w * self.floor_use_rate * boost * saturation * use, 0.0, 1.0) * (1.0 - r)
         healable = np.maximum(hemi.damage - self.floor(hemi.name), 0.0)
         hemi.damage = hemi.damage - np.clip(w * rate, 0.0, 1.0) * healable

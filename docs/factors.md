@@ -1,6 +1,6 @@
 # Adjustable factors
 
-Every factor of the patient-care model, what it stands for, its default and range, and the source.
+Every factor of the patient-care model (see docs/calibration.md for the formulas used to calibrate them), what it stands for, its default and range, and the source.
 The defaults live in `configs/care.yaml`. A patient file can override any of them. Some values
 are **assumptions**, because no measured value exists. Those are the ones to sweep and to state on
 the poster.
@@ -18,10 +18,11 @@ the poster.
 
 | Factor | Meaning | Default | Range / note | Source |
 |---|---|---|---|---|
-| `spontaneous_per_day` | share of healable damage repaired per day without practice | 0.003 | 0–0.01; to be calibrated | proportional-recovery debate (Chong 2023 NNR; Bowman 2021 Stroke) |
-| `use_rate` | extra healing per practice step per unit of use | 0.03 | to be calibrated (phase 3) | — |
-| `callosal_use_weight` | matching input from the healthy side also counts as use | 1.0 | 0 = only the area's own activity | Hebbian assumption; callosal plasticity |
-| `floor_fraction` | share of the worst damage that is permanent | 0.3 | 0–0.6 | assumption |
+| `spontaneous_per_day` | share of healable damage repaired per day without practice | 0.16 | **calibrated** | van der Vliet 2020 Ann Neurol recovery curves (docs/calibration.md) |
+| `use_rate` | extra healing per practice step per unit of use | 0.3 | **weakly constrained**: top of the range tried; 0.03 fits almost as well | van der Vliet 2020; CPASS 2021 |
+| `callosal_use_weight` | matching input from the healthy side also counts as use | 1.0 | **supported** (correlational), 0 = only the area's own activity | Yuan 2020; Paul 2023; Kokinovic & Medini 2018 |
+| `floor_fraction` | share of the worst damage that is permanent (unless practice lowers it) | 0.3 | **calibrated** | van der Vliet 2020 (recovery coefficients r_k) |
+| `floor_use_rate` | how fast practice lowers the permanent floor (raises the final level, not only the speed) | 0.03 | **calibrated** to CPASS, but CPASS still not matched (1.6% vs 15.8%); new rule, 0 = old behaviour | Dromerick 2021 PNAS (CPASS) |
 | `saturation_reps` | reps per session after which more reps help half as much | 300 | 100–1000 | no dose-response from 3,200 to 9,600 reps: Lang 2016 Ann Neurol |
 | `window_points` | golden period: (days, plasticity gain) | (0, 0.5) (20, 0.76) (75, 1.0) (180, 0.35) (365, 0.2) | the decay rate has never been measured in humans: sweep it | CPASS: +5.25 / +6.87 / +2.41 ARAT (Dromerick 2021) |
 
@@ -56,8 +57,9 @@ the poster.
 | Factor | Meaning | Default | Source |
 |---|---|---|---|
 | `strength` | link strength (0 = split brain, the control) | 0.381 (fitted to resting fMRI) | this project's fit |
-| `plasticity_rate`, `plasticity_gain`, `takeover_gain` | adaptation after damage | 0.02, 1.5, 3.0 | configs/hcp.yaml |
-| `inhibition` | the interhemispheric "brake" | 0 (off) | bimodal balance model: Di Pino 2014 Nat Rev Neurol |
+| `plasticity_rate` | how fast the bridge adapts after damage | 0.00888 in patient runs (0.02 in hcp.yaml fMRI runs) | **calibrated**: 95% by day 14, Kokinovic & Medini 2018 |
+| `plasticity_gain`, `takeover_gain` | how much the bridge strengthens / the healthy side takes over | 1.5, 3.0 | assumption (DCM sign pattern used as a check) |
+| `inhibition` | the interhemispheric "brake" (movement areas only via `inhibition_jobs`) | 0 (off) | **checked**: no value passed NICHE + Di Pino + DCM; k = (1/IHI − 1)/a once Murase 2004's ratio is filled in |
 
 ## Diseases (`configs/diseases/*.yaml`, one tab each; see docs/diseases.md)
 

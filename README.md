@@ -187,6 +187,7 @@ The panel answers first, in a few big tiles and one sentence. Everything else is
   hand: [docs/diseases.md](docs/diseases.md).
 
 ```powershell
+python scripts/calibrate.py              # fit guessed settings to published formulas -> results/calibration/ (docs/calibration.md)
 python scripts/validate_trials.py        # does the model reproduce NICHE/E-FIT, VNS-REHAB, CPASS? -> results/validation/
 ```
 

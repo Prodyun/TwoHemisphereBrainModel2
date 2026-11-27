@@ -1,0 +1,79 @@
+# PUBLISHED NUMBERS the model is fitted to (scripts/calibrate.py; formulas in src/brain_model/calibration.py).
+# Only numbers printed in papers. `null` = a placeholder the owner can fill in from the full text.
+
+healing:
+  # van der Vliet et al. 2020, Ann Neurol 87:383-393, Table 1 (412 first-ever ischaemic stroke patients,
+  # FM-UE measured up to 26 weeks). FM(t) = FM0 + r_k (66 - FM0)(1 - exp(-t/tau_k)), tau in weeks;
+  # baseline FM0 = 66 / (1 + exp(-a)), a ~ Normal(mu, sigma) per subgroup, share p.
+  van_der_vliet_2020:
+    source: "van der Vliet R et al. Ann Neurol 2020;87:383-393 (Table 1)"
+    groups:
+      - {k: 1, p: 0.27, r: 0.09, tau: 5.3, mu: -3.2, sigma: 0.6}
+      - {k: 2, p: 0.14, r: 0.46, tau: 10.1, mu: -2.1, sigma: 2.2}
+      - {k: 3, p: 0.11, r: 0.86, tau: 9.8, mu: -2.8, sigma: 3.0}
+      - {k: 4, p: 0.18, r: 0.89, tau: 2.7, mu: -1.3, sigma: 2.9}
+      - {k: 5, p: 0.30, r: 0.93, tau: 1.2, mu: 0.0, sigma: 2.4}
+    model_assumption: "model function score x 66 is read as FM-UE (the model has no Fugl-Meyer scale)"
+  # Dromerick et al. 2021 PNAS 118:e2026676118 (CPASS): 20 extra hours of task practice started at 2-3
+  # months gave +6.87 ARAT (of 57) more than standard care; the subacute group started at ARAT 13.4 (Table 2).
+  cpass_2021:
+    source: "Dromerick AW et al. PNAS 2021;118:e2026676118 (abstract; Table 2)"
+    extra_hours: 20
+    start_day: 75            # middle of the 2-3 month window
+    days: 28                 # ASSUMPTION: delivery spread over 4 weeks, 5 days a week (1 h a day)
+    gain_points: 6.87
+    scale_max: 57
+    baseline_points: 13.4
+    # share of the deficit at baseline that the extra practice removed: 6.87 / (57 - 13.4)
+    gain_share_of_deficit: 0.158
+
+bridge:
+  # Kokinovic & Medini 2018, J Physiol 596:1949 (summarised by Caleo 2018, J Physiol 596:1789):
+  # after a touch-cortex stroke, responses vanished at day 2 and were back through the callosum by day 14.
+  kokinovic_medini_2018:
+    source: "Kokinovic B, Medini P. J Physiol 2018;596:1949-1964 (via Caleo 2018)"
+    days_to_takeover: 14
+  # Rehme 2011 / Grefkes 2008 (dynamic causal modelling): healthy M1 -> damaged M1 coupling is positive
+  # (supportive) early and becomes negative (inhibitory) in the chronic stage in poorly recovered patients.
+  dcm_sign_pattern:
+    source: "Rehme AK et al. 2011 (PMC8053821); Grefkes C et al. Ann Neurol 2008;63:236-246"
+    early: positive
+    late_poor_recovery: negative
+  # Murase et al. 2004, Ann Neurol 55:400-409: IHI from healthy to damaged M1 at movement onset.
+  murase_2004:
+    source: "Murase N et al. Ann Neurol 2004;55:400-409"
+    ihi_ratio_patients: null      # MEP(conditioned)/MEP(test) in patients, from the paper's figure
+    ihi_ratio_controls: null
+  # Paul et al. 2023, Ann Neurol 94:785 (abstract only): callosal M1-M1 wiring tracks basic motor control.
+  paul_2023:
+    source: "Paul T et al. Ann Neurol 2023;94:785-797"
+    r_callosal_vs_motor: null     # correlation coefficient, from the full text
+
+bridge_therapy:
+  # Bi & Poo 1998, J Neurosci 18:10464 (STDP window); ccPAS with an 8 ms gap (Buch et al. 2011).
+  stdp:
+    source: "Bi GQ, Poo MM. J Neurosci 1998;18:10464-10472; Buch ER et al. 2011 (ccPAS 8 ms, 90 pairs)"
+    tau_plus_ms: 16.8             # Bi & Poo 2001 review fit (Annu Rev Neurosci 24:139)
+    tau_minus_ms: 33.7
+    a_minus_over_a_plus: 0.35     # depression smaller than potentiation (same fit, 0.273 / 0.777)
+    isi_ms: 8                     # ccPAS gap used in Buch 2011
+    mep_gain_after_session: null  # % MEP increase after one ccPAS session (from the full text)
+  knutson_2016:
+    source: "Knutson JS et al. Stroke 2016;47:2596-2603 (CCFES)"
+    effect_points: null           # extra Box and Blocks / FM gain vs cyclic NMES
+
+diseases:
+  # Swanson proliferation-invasion model; values reported for glioblastoma (PMC3467150 and refs).
+  tumor_pi:
+    source: "Swanson KR et al. 2000-2003; values as reported in PMC3467150"
+    rho_per_day: 0.012
+    d_cm2_per_day: 0.0013
+  # Jirsa et al. 2014 Brain; Proix et al. 2014: 2D Epileptor, critical excitability ~ -2.05.
+  epileptor:
+    source: "Jirsa VK et al. Brain 2014;137:2210; Proix T et al. 2014"
+    current: 3.1
+    focus_x0: -1.8                # ASSUMPTION within the published epileptogenic range (> x0c)
+  # Relapse rate falls with disease duration (Tremlett et al. 2008, Neurology 71:1500).
+  ms_relapses:
+    source: "Tremlett H et al. Neurology 2008;71:1500"
+    decline_per_year: null        # beta in lambda(t) = lambda0 exp(-beta t), from the paper

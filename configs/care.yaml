@@ -15,9 +15,13 @@ care:
 
 recovery:
   enabled: true
-  spontaneous_per_day: 0.003   # share of the healable damage repaired per day without practice
-  use_rate: 0.03             # extra healing per step per unit of use during practice
-  floor_fraction: 0.3        # 30% of the worst damage is permanent (dead tissue)
+  # CALIBRATED (scripts/calibrate.py, docs/calibration.md) to the van der Vliet 2020 recovery curves
+  # (412 patients; FM(t) = FM0 + r(66-FM0)(1-exp(-t/tau)), 5 subgroups) and CPASS 2021, all four together.
+  # Was 0.003 / 0.03 / 0.3 (guesses). Fit: curve misfit 0.004; CPASS extra-practice gain 1.6% vs 15.8% (not matched).
+  spontaneous_per_day: 0.16     # calibrated: share of the healable damage repaired per day without practice
+  use_rate: 0.3              # WEAKLY constrained: at the top of the range tried; 0.03 fits almost as well
+  floor_use_rate: 0.03       # calibrated to CPASS: practice lowers the permanent floor (recovery.py); 0 = old rule
+  floor_fraction: 0.3        # calibrated: 30% of the worst damage is permanent unless practice lowers it
   saturation_reps: 300       # repetitions in one session after which more help half as much (Lang 2016)
   callosal_use_weight: 1.0   # matching input arriving from the healthy side also counts as use
   # Golden period: (days since injury, plasticity gain). CPASS (Dromerick 2021 PNAS): extra therapy
@@ -46,6 +50,13 @@ stimulation:
   paired: true              # stimulate only during practice steps
   start_day: 7
   strength: 0.3             # default strength for a target (positive = excite, negative = calm)
+
+# BRIDGE ADAPTATION after damage (overrides configs/hcp.yaml for patient runs only)
+corpus_callosum:
+  plasticity_rate: 0.00888  # CALIBRATED: callosal takeover 95% done by day 14 (Kokinovic & Medini 2018,
+                            # J Physiol): 1 - 0.05^(1/(14 x 24)). Was 0.02 (done in ~2 days).
+  inhibition: 0.0           # the brake stays OFF: no value passed NICHE + Di Pino + DCM checks (calibration)
+  inhibition_jobs: [movement]   # if turned on, the brake reaches movement areas only (Murase 2004)
 
 # HEALTHY SIDE HELPS (connectivity/bridge_therapy.py, healthy_side.py): the healthy hemisphere actively
 # treats the damaged one. Off unless a plan sets `bridge.mode` and `bridge.pairs`.

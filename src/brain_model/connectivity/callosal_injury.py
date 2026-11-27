@@ -37,6 +37,10 @@ class CallosalInjury:
         self.recover_steps = max(1, int(cfg.get("recover_days", 60) * steps_per_day))
         self.relapse_p = float(cfg.get("relapses_per_year", 1.0)) / (365.0 * steps_per_day)
         self.areas_per_relapse = int(cfg.get("areas_per_relapse", 20))
+        # Relapses become rarer with disease duration (Tremlett 2008): lambda(t) = lambda0 exp(-beta t),
+        # t = years with the disease (starting at `years_with_disease`). beta = 0: constant rate.
+        self.decline = float(cfg.get("relapse_decline_per_year", 0.0))
+        self.years0 = float(cfg.get("years_with_disease", 0.0))
         self.progressive = float(cfg.get("progressive_per_year", 0.0)) / (365.0 * steps_per_day)
         # permanent loss and loss that can still heal, per side and area
         self.lost = {s: np.zeros(self.n) for s in ("left", "right")}
@@ -59,7 +63,11 @@ class CallosalInjury:
             return
         if t == self.onset and self.kind == "hit":
             self._hit(self._random_areas(int(round(self.fraction * self.n))), self.severity)
-        if self.kind == "relapsing" and self.rng.random() < self.relapse_p:
+        p_now = self.relapse_p
+        if self.decline:
+            years = self.years0 + (t - self.onset) / (365.0 * self.spd)
+            p_now = self.relapse_p * np.exp(-self.decline * years)
+        if self.kind == "relapsing" and self.rng.random() < p_now:
             self.relapse_steps.append(t)
             self._hit(self._random_areas(self.areas_per_relapse), self.severity)
         for side in ("left", "right"):

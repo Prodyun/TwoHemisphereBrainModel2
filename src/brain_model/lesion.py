@@ -56,8 +56,8 @@ class Lesion:
         self.into_target, self.into_other = into_target, into_other
         self.kind = cfg.get("type", "spreading")
         self.model = cfg.get("model", "simple")
-        if self.model not in ("simple", "fisher_kpp"):
-            raise ValueError("lesion.model must be 'simple' or 'fisher_kpp'")
+        if self.model not in ("simple", "fisher_kpp", "proliferation_invasion"):
+            raise ValueError("lesion.model must be 'simple', 'fisher_kpp' or 'proliferation_invasion'")
         self.transport = cfg.get("transport", 0.0)
         self.growth = cfg.get("growth", 0.0)
         self.W_len = {h.name: self._length_weighted(h) for h in (target, other)}
@@ -75,6 +75,26 @@ class Lesion:
         self.pressure_neighbors = cfg.get("pressure_neighbors", 4)
         self.penumbra_steps = int(cfg.get("penumbra_steps", 0))
         self.penumbra_start = float(cfg.get("penumbra_start", 0.3))
+        # linear (default) or exponential: share(t) = 1 - (1 - p0) exp(-3 t / T), 95% lost by T
+        self.penumbra_shape = cfg.get("penumbra_shape", "linear")
+        # Epileptor gate (Jirsa 2014): a focus seizes only if its excitability x0 is above the critical x0c
+        self.focus_x0 = cfg.get("focus_x0")
+        if self.focus_x0 is not None:
+            from .calibration import epileptor_threshold
+            self.focus_epileptogenic = float(self.focus_x0) > epileptor_threshold(float(cfg.get("epileptor_current", 3.1)))
+        else:
+            self.focus_epileptogenic = True
+        # Tumour proliferation-invasion (Swanson): cell density c spreads along the wiring and multiplies,
+        # dc = transport (W c - c) + growth c (1 - c), with transport = D / L^2 and growth = rho per step.
+        self.tumor_cells = None
+        if self.kind == "tumor" and self.model == "proliferation_invasion":
+            from .calibration import pi_network_rates
+            spd = int(cfg.get("steps_per_day", 24))
+            self.transport, self.growth = pi_network_rates(
+                float(cfg.get("d_mm2_per_day", 0.13)), float(cfg.get("rho_per_day", 0.012)),
+                self._mean_link_mm(target), spd)
+            self.transport *= float(cfg.get("pi_speedup", 1.0))
+            self.growth *= float(cfg.get("pi_speedup", 1.0))
         self.excitability = float(cfg.get("excitability", 1.5))
         self.excitability_neighbors = int(cfg.get("excitability_neighbors", 3))
         self.seizure_p = float(cfg.get("seizures_per_day", 0.5)) / max(1, int(cfg.get("steps_per_day", 24)))
@@ -121,6 +141,13 @@ class Lesion:
         W = np.divide(hemi.W, dist, out=np.zeros_like(hemi.W, dtype=float), where=dist > 0)
         s = W.sum(axis=1, keepdims=True)
         return np.divide(W, s, out=np.zeros_like(W), where=s > 0)
+
+    @staticmethod
+    def _mean_link_mm(hemi: Hemisphere) -> float:
+        """Average centre-to-centre distance (mm) between wired areas (model units are 100 mm)."""
+        dist = np.linalg.norm(hemi.centers[:, None] - hemi.centers[None], axis=-1) * 100.0
+        linked = (hemi.W > 0) & (dist > 0)
+        return float(dist[linked].mean()) if linked.any() else 10.0
 
     def _penumbra(self) -> bool:
         return self.kind == "stroke" and self.penumbra_steps > 0 and bool(self.damage_map)
@@ -179,6 +206,8 @@ class Lesion:
     def _grow_penumbra(self, t: int) -> None:
         """The at-risk ring around the core dies off gradually (never undoes healing elsewhere)."""
         frac = min(1.0, (t - self.start_step) / self.penumbra_steps)
+        if self.penumbra_shape == "exponential":
+            frac = 1.0 if frac >= 1.0 else (1.0 - np.exp(-3.0 * frac)) / (1.0 - np.exp(-3.0))
         share = self.penumbra_start + (1.0 - self.penumbra_start) * frac
         for hemi in (self.target, self.other):
             for i, value in self.damage_map[hemi.name].items():
@@ -188,7 +217,7 @@ class Lesion:
 
     def _seizures(self) -> None:
         """Start or continue a seizure: a strong extra drive at the focus (it acts on the next step)."""
-        if self._seizure_left == 0 and self._rng.random() < self.seizure_p:
+        if self._seizure_left == 0 and self.focus_epileptogenic and self._rng.random() < self.seizure_p:
             self._seizure_left = self.seizure_steps
         drive = self.target.seizure_drive
         drive[:] = 0.0
@@ -200,6 +229,9 @@ class Lesion:
 
     def _grow_tumor(self, t: int) -> None:
         """Slow growth at the centre plus pressure on its strongest neighbours (no front)."""
+        if self.model == "proliferation_invasion":
+            self._grow_pi()
+            return
         frac = min(1.0, (t - self.start_step) / max(1, self.growth_steps))
         d = self.target.damage
         start = self.damage_map[self.target.name][self.center_region] if self.damage_map else self.initial_damage
@@ -208,3 +240,18 @@ class Lesion:
         row = self.target.W[self.center_region]
         nearest = [i for i in np.argsort(row)[::-1][: self.pressure_neighbors] if row[i] > 0]
         d[nearest] = np.maximum(d[nearest], self.pressure * centre)
+
+    def _grow_pi(self) -> None:
+        """Proliferation-invasion: tumour cells invade along the wiring and multiply; damage follows them."""
+        d = self.target.damage
+        if self.tumor_cells is None:
+            self.tumor_cells = np.zeros_like(d)
+            start = self.damage_map[self.target.name] if self.damage_map else {self.center_region: self.initial_damage}
+            for i, v in start.items():
+                self.tumor_cells[i] = v
+        c = self.tumor_cells
+        W = self.W_len[self.target.name]
+        has = W.sum(axis=1) > 0
+        c += self.transport * np.where(has, W @ c - c, 0.0) + self.growth * c * (1 - c)
+        np.clip(c, 0.0, 1.0, out=c)
+        np.maximum(d, np.minimum(c, self.max_damage), out=d)
